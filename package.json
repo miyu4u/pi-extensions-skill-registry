@@ -1,0 +1,65 @@
+{
+  "name": "@miyu4u/pi-extensions-skill-registry",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Skill registry extension for SQLite FTS5 skill lookup and BM25 ranking",
+  "module": "src/main.ts",
+  "main": "./dist/main.js",
+  "type": "module",
+  "keywords": [
+    "omp-plugin",
+    "omp-extension",
+    "pi-package",
+    "pi-extension",
+    "skill"
+  ],
+  "files": [
+    "README.md",
+    "package.json",
+    "dist"
+  ],
+  "pi": {
+    "extensions": [
+      "./dist/main.js"
+    ]
+  },
+  "omp": {
+    "extensions": [
+      "./dist/main.js"
+    ]
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "lint": "biome lint --write .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "bun run typecheck && biome check .",
+    "check:fix": "bun run typecheck && bun run lint && bun run format",
+    "build": "bun build ./src/main.ts --outdir ./dist --target bun",
+    "test": "bun run test:unit && bun run test:sqlite && bun run test:e2e",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.json --passWithNoTests",
+    "test:sqlite": "bun test src/indexing/skill-search-database.bun.spec.ts",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config __test__/jest.e2e-config.json --passWithNoTests"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.49"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.1",
+    "@jest/globals": "^30.4.1",
+    "@mariozechner/pi-coding-agent": "*",
+    "@types/bun": "latest",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.0",
+    "bun-types": "latest",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.4.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

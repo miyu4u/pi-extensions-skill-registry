@@ -1,0 +1,18 @@
+# 임시 경로
+.tmp/**
+!.tmp/.gitkeep
+
+# harness
+.omp
+.pi
+
+# node
+node_modules
+dist
+
+# secrets
+.env
+
+# else
+
+docs/plans/**
