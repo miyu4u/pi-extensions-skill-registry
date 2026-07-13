@@ -1,6 +1,5 @@
 import type {
 	IndexArtifacts,
-	RawSkill,
 	SearchHit,
 	SkillApplyPacketResult,
 	SkillAuditReport,
@@ -62,18 +61,6 @@ export interface SkillIndexInterface {
 	 * @returns 검색과 패킷 생성 단계에서 공유할 IndexArtifacts
 	 */
 	loadIndex(input: ToolContext): Promise<IndexArtifacts>;
-
-	/**
-	 * 단일 skill 파일을 파싱해 내부에서 다루는 RawSkill 객체로 변환합니다.
-	 * 파싱 실패 시 오류 목록에 원인만 기록해 둠으로써, 전체 인덱스 로드는 유지한 채
-	 * 진단 가능한 상태로 다음 단계로 넘길 수 있게 합니다.
-	 *
-	 * @param skillPath 파싱할 파일 경로
-	 * @param root 루트 경로 기준으로 상대 경로를 해석할 기준점
-	 * @param issues 오류 메시지를 누적할 선택적 버퍼
-	 * @returns 파싱 성공 시 RawSkill, 실패 시 null
-	 */
-	parseSkillFile(skillPath: string, root: string, issues?: string[]): RawSkill | null;
 
 	/**
 	 * BM25 점수 기반으로 1차 후보 히트를 산출합니다.

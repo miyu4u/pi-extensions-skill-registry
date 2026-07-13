@@ -2,6 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import type { SettingsLoaderInterface } from "../settings";
 import { DEFAULT_FILE_NAMES, type ToolContext, type ToolInput } from "../shared";
+import { normalizeSkillName } from "./skill-name-normalizer";
 
 const TASK_SIZE_LIMITS = {
 	small: 2,
@@ -56,7 +57,7 @@ export class SkillInputNormalizer {
 		if (!names || names.length === 0) {
 			return [];
 		}
-		const deduped = [...new Set(names.map((name) => this.normalizeSkillName(name)).filter(Boolean))];
+		const deduped = [...new Set(names.map(normalizeSkillName).filter(Boolean))];
 		return preserveOrder ? deduped : deduped.sort();
 	}
 
@@ -72,12 +73,4 @@ export class SkillInputNormalizer {
 		return raw.startsWith("~") ? path.join(os.homedir(), raw.slice(1)) : raw;
 	}
 
-	private normalizeSkillName(name: string): string {
-		return name
-			.trim()
-			.replace(/\.md$/i, "")
-			.replace(/^skill[-_]/i, "")
-			.replace(/\s+/g, "-")
-			.toLowerCase();
-	}
 }

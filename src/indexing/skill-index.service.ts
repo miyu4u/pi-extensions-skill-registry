@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import type {
 	ComposedSkillEntry,
@@ -28,8 +27,6 @@ import type {
 	SkillExplainEntry,
 	SkillExplainResult,
 	SkillFileReadyPacketResult,
-	SkillFrontmatter,
-	SkillFrontmatterRecord,
 	SkillGapCandidate,
 	SkillGapResult,
 	SkillGraphMode,
@@ -70,18 +67,10 @@ import type {
 } from "../shared";
 import type { SearchTokenizerInterface } from "../tokenization";
 import type { SkillIndexInterface } from "./skill-index.interface";
+import type { SkillDocumentParser } from "./skill-document-parser";
+import type { SkillFileScanner } from "./skill-file-scanner";
+import { normalizeSkillName } from "./skill-name-normalizer";
 import type { SkillSearchDatabaseInterface, SkillSearchDocument, SkillSearchSnapshot } from "./skill-search-database.interface";
-
-/** 스캔 중 제외할 디렉터리 이름 목록입니다. */
-const SKIP_DIRECTORY_NAMES: Record<string, true> = {
-	".git": true,
-	".svn": true,
-	node_modules: true,
-	".venv": true,
-	dist: true,
-	build: true,
-	out: true,
-};
 
 /** 0-result fallback에서 제거할 일반 작업어 lookup 테이블입니다. */
 const FALLBACK_QUERY_STOP_WORDS: Record<string, true> = {
@@ -108,6 +97,8 @@ export class SkillIndexService implements SkillIndexInterface {
 	constructor(
 		private readonly searchDatabase: SkillSearchDatabaseInterface,
 		private readonly searchTokenizer: SearchTokenizerInterface,
+		private readonly fileScanner: SkillFileScanner,
+		private readonly documentParser: SkillDocumentParser,
 	) {}
 
 	/**
@@ -123,7 +114,7 @@ export class SkillIndexService implements SkillIndexInterface {
 	 * 정규화된 context 기준으로 skill index를 로드합니다.
 	 */
 	async loadIndex(input: ToolContext): Promise<IndexArtifacts> {
-		const normalizedPreset = input.settings.presetSkills.map((name) => this.normalizeSkillName(name));
+		const normalizedPreset = input.settings.presetSkills.map((name) => normalizeSkillName(name));
 		const shouldUseFullCorpusForQueryDecision =
 			(input.action === "compare" ||
 				input.action === "decide" ||
@@ -225,19 +216,13 @@ export class SkillIndexService implements SkillIndexInterface {
 		let indexBuildMode: "targeted" | "full" = shouldFilterByRequestedNames ? "targeted" : "full";
 
 		for (const root of input.roots) {
-			let stat: fs.Stats;
-			try {
-				stat = fs.statSync(root);
-			} catch {
-				stats.skippedMissingRoot += 1;
-				continue;
-			}
-			if (!stat.isDirectory()) {
+			const scanResult = this.fileScanner.scan(root, input.fileNames, scanRequestedSet);
+			if (scanResult.missingRoot) {
 				stats.skippedMissingRoot += 1;
 				continue;
 			}
 
-			const { mode, files } = this.collectSkillFiles(root, input.fileNames, scanRequestedSet);
+			const { mode, files } = scanResult;
 			if (mode === "full") {
 				indexBuildMode = "full";
 			}
@@ -245,7 +230,7 @@ export class SkillIndexService implements SkillIndexInterface {
 
 			for (const skillFile of files) {
 				const parseIssues: string[] = [];
-				const candidate = this.parseSkillFile(skillFile, root, parseIssues);
+				const candidate = this.documentParser.parseSkillFile(skillFile, root, parseIssues);
 				if (!candidate) {
 					stats.parseErrors += 1;
 					stats.malformedFiles.push({
@@ -322,79 +307,6 @@ export class SkillIndexService implements SkillIndexInterface {
 		this.cachedIndex = indexData;
 		this.activeSnapshotToken = snapshot.snapshotToken;
 		return indexData;
-	}
-
-	/**
-	 * 단일 skill 파일을 파싱합니다.
-	 */
-	parseSkillFile(skillPath: string, root: string, issues: string[] = []): RawSkill | null {
-		let raw: string;
-		try {
-			raw = fs.readFileSync(skillPath, "utf-8");
-		} catch (error) {
-			issues.push(`read failed: ${error instanceof Error ? error.message : "unknown read error"}`);
-			return null;
-		}
-
-		const parsed = this.readFrontmatter(raw);
-		const body = this.stripFrontmatter(raw).trim();
-		const frontmatter = this.normalizeFrontmatter(parsed);
-		const name = frontmatter.name || this.guessSkillName(skillPath);
-		const canonicalName = this.normalizeSkillName(name);
-		if (!canonicalName) {
-			issues.push("missing canonical skill name");
-			return null;
-		}
-
-		const title = this.headingTitle(body) || frontmatter.description || canonicalName;
-		const keywords = this.extractList(frontmatter.keywords).map((word) => this.normalizeKeyword(word));
-		const tags = this.extractList(frontmatter.tags).map((word) => this.normalizeKeyword(word));
-		const aliases = this.extractList(frontmatter.aliases)
-			.map((name) => this.normalizeSkillName(name))
-			.filter(Boolean);
-		const requires = this.extractList(frontmatter.requires)
-			.map((name) => this.normalizeSkillName(name))
-			.filter(Boolean);
-		const recommends = this.extractList(frontmatter.recommends)
-			.map((name) => this.normalizeSkillName(name))
-			.filter(Boolean);
-		const category = frontmatter.category || "uncategorized";
-
-		let stat: fs.Stats;
-		try {
-			stat = fs.statSync(skillPath);
-		} catch (error) {
-			issues.push(`stat failed: ${error instanceof Error ? error.message : "unknown fs error"}`);
-			return null;
-		}
-
-		const uniqueAliases = [...new Set(aliases)].filter((name) => name !== canonicalName);
-		const uniqueRequires = [...new Set(requires)].filter((name) => name !== canonicalName);
-		const uniqueRecommends = [...new Set(recommends)].filter((name) => name !== canonicalName && !uniqueRequires.includes(name));
-		return {
-			id: canonicalName,
-			canonicalName,
-			path: path.resolve(skillPath),
-			sourceRoot: root,
-			rawFrontmatter: parsed,
-			frontmatter: {
-				...frontmatter,
-				name: canonicalName,
-				aliases: uniqueAliases,
-				requires: uniqueRequires,
-				recommends: uniqueRecommends,
-			},
-			bodyText: body,
-			title,
-			category,
-			keywords: [...new Set(keywords)],
-			tags: [...new Set(tags)],
-			aliases: uniqueAliases,
-			requires: uniqueRequires,
-			recommends: uniqueRecommends,
-			text: "",
-			mtimeMs: stat.mtimeMs,
-		};
 	}
 
 	/**
@@ -2698,171 +2610,6 @@ export class SkillIndexService implements SkillIndexInterface {
 	}
 
 	/**
-	 * 요청 이름 유무에 따라 targeted/full 스캔 파일 집합을 계산합니다.
-	 */
-	private collectSkillFiles(
-		root: string,
-		fileNames: string[],
-		requestedSet: Set<string>,
-	): { mode: "targeted" | "full"; files: string[] } {
-		if (requestedSet.size === 0) {
-			return { mode: "full", files: this.findSkillFiles(root, fileNames) };
-		}
-		const targeted: string[] = [];
-		const dedupe = new Set<string>();
-		const directlyResolvedRequestedNames = new Set<string>();
-		const extensions = Array.from(new Set(fileNames.map((fileName) => path.extname(fileName).toLowerCase())));
-
-		for (const requestedName of requestedSet) {
-			const candidateDir = path.join(root, requestedName);
-			let dirEntries: fs.Dirent[];
-			try {
-				dirEntries = fs.readdirSync(candidateDir, { withFileTypes: true });
-			} catch {
-				dirEntries = [];
-			}
-
-			for (const entry of dirEntries) {
-				if (!entry.isFile()) {
-					continue;
-				}
-				if (!fileNames.includes(entry.name)) {
-					continue;
-				}
-				const skillFile = path.join(candidateDir, entry.name);
-				if (!dedupe.has(skillFile)) {
-					dedupe.add(skillFile);
-					targeted.push(skillFile);
-				}
-				directlyResolvedRequestedNames.add(requestedName);
-			}
-
-			for (const ext of extensions) {
-				if (!ext) {
-					continue;
-				}
-				const skillFile = path.join(root, `${requestedName}${ext}`);
-				try {
-					if (fs.statSync(skillFile).isFile()) {
-						if (!dedupe.has(skillFile)) {
-							dedupe.add(skillFile);
-							targeted.push(skillFile);
-						}
-						directlyResolvedRequestedNames.add(requestedName);
-					}
-				} catch {
-					// not found
-				}
-			}
-		}
-
-		if (targeted.length > 0 && directlyResolvedRequestedNames.size === requestedSet.size) {
-			return { mode: "targeted", files: targeted };
-		}
-
-		return { mode: "full", files: this.findSkillFiles(root, fileNames) };
-	}
-
-	/**
-	 * 루트 아래 skill 파일들을 재귀 탐색합니다.
-	 */
-	private findSkillFiles(root: string, fileNames: string[]): string[] {
-		const found: string[] = [];
-		const stack = [root];
-
-		while (stack.length > 0) {
-			const current = stack.pop();
-			if (!current) {
-				continue;
-			}
-			let dirEntries: fs.Dirent[];
-			try {
-				dirEntries = fs.readdirSync(current, { withFileTypes: true });
-			} catch {
-				continue;
-			}
-
-			for (const entry of dirEntries) {
-				if (entry.isDirectory()) {
-					if (SKIP_DIRECTORY_NAMES[entry.name]) {
-						continue;
-					}
-					stack.push(path.join(current, entry.name));
-					continue;
-				}
-
-				if (!entry.isFile()) {
-					continue;
-				}
-				if (!fileNames.includes(entry.name)) {
-					continue;
-				}
-				found.push(path.join(current, entry.name));
-			}
-		}
-
-		return found;
-	}
-
-	/**
-	 * frontmatter 문자열 레코드를 읽습니다.
-	 */
-	private readFrontmatter(text: string): SkillFrontmatterRecord {
-		const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
-		if (!match) {
-			return {};
-		}
-
-		const records: SkillFrontmatterRecord = {};
-		let pendingListKey = "";
-		let pendingListValues: string[] = [];
-		const flushPendingList = (): void => {
-			if (!pendingListKey) {
-				return;
-			}
-			records[pendingListKey] = [...pendingListValues];
-			pendingListKey = "";
-			pendingListValues = [];
-		};
-
-		for (const line of match[1].split(/\r?\n/)) {
-			const matchLine = /^(?<key>[A-Za-z][A-Za-z0-9_-]*):(?:\s*(?<value>.*))?$/.exec(line);
-			if (matchLine?.groups) {
-				flushPendingList();
-				const key = matchLine.groups.key.toLowerCase();
-				const rawValue = (matchLine.groups.value ?? "").trim();
-				if (!rawValue) {
-					pendingListKey = key;
-					pendingListValues = [];
-					records[key] = "";
-					continue;
-				}
-				records[key] = rawValue;
-				continue;
-			}
-
-			if (!pendingListKey) {
-				continue;
-			}
-
-			const listLine = /^\s*-\s*(?<value>.+?)\s*$/.exec(line);
-			if (listLine?.groups?.value) {
-				pendingListValues.push(this.stripFrontmatterQuotes(listLine.groups.value));
-				continue;
-			}
-
-			if (/^\s+/.test(line) || !line.trim()) {
-				continue;
-			}
-
-			flushPendingList();
-		}
-
-		flushPendingList();
-		return records;
-	}
-
-	/**
 	 * 요청 name 목록을 exact canonical/alias 기준으로 resolve합니다.
 	 */
 	private resolveRequestedSkills(index: IndexArtifacts, names: string[]): { resolved: RawSkill[]; missing: string[] } {
@@ -2887,119 +2634,6 @@ export class SkillIndexService implements SkillIndexInterface {
 			resolved,
 			missing,
 		};
-	}
-
-	/**
-	 * frontmatter block을 제외한 body를 반환합니다.
-	 */
-	private stripFrontmatter(text: string): string {
-		const match = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(text);
-		if (!match) {
-			return text;
-		}
-		return text.slice(match[0].length);
-	}
-
-	/**
-	 * raw frontmatter를 정규화된 skill frontmatter로 변환합니다.
-	 */
-	private normalizeFrontmatter(raw: SkillFrontmatterRecord): SkillFrontmatter {
-		const tags = this.extractList(raw.tags ?? raw.tag);
-		const keywords = this.extractList(raw.keywords);
-		const aliases = this.extractList(raw.aliases ?? raw.alias);
-		const requires = this.extractList(raw.requires ?? raw.require ?? raw.depends_on);
-		const recommends = this.extractList(raw.recommends ?? raw.recommend ?? raw.related);
-		return {
-			name: this.extractScalarValue(raw.name),
-			description: this.extractScalarValue(raw.description ?? raw.summary),
-			category: this.extractScalarValue(raw.category ?? raw.group ?? raw.type),
-			keywords,
-			tags,
-			aliases,
-			requires,
-			recommends,
-			version: this.extractScalarValue(raw.version ?? raw.skill_version),
-		};
-	}
-
-	/**
-	 * string 또는 string[] 입력을 list로 정규화합니다.
-	 */
-	private extractList(value?: string | string[]): string[] {
-		if (!value) {
-			return [];
-		}
-		if (Array.isArray(value)) {
-			return value.map((entry) => entry.trim()).filter(Boolean);
-		}
-		return this.parseCsv(value);
-	}
-
-	/**
-	 * CSV 또는 bracket array 문자열을 list로 파싱합니다.
-	 */
-	private parseCsv(value: string): string[] {
-		const source = value.trim();
-		if (!source) {
-			return [];
-		}
-		if (source.startsWith("[") && source.endsWith("]")) {
-			return source
-				.slice(1, -1)
-				.split(",")
-				.map((entry) => entry.trim().replace(/^"|"$|^'|'$/g, ""))
-				.filter(Boolean);
-		}
-		return source
-			.split(/[,;\n]+/g)
-			.map((entry) => entry.trim())
-			.filter(Boolean);
-	}
-
-	/**
-	 * frontmatter scalar 값을 string으로 정규화합니다.
-	 */
-	private extractScalarValue(value?: string | string[]): string {
-		if (Array.isArray(value)) {
-			return value[0]?.trim() ?? "";
-		}
-		return value?.trim() ?? "";
-	}
-
-	/**
-	 * frontmatter list item 양쪽 quote를 제거합니다.
-	 */
-	private stripFrontmatterQuotes(value: string): string {
-		return value.trim().replace(/^["'`]|["'`]$/g, "");
-	}
-
-	/**
-	 * keyword/tag 값을 소문자 기준으로 정규화합니다.
-	 */
-	private normalizeKeyword(value: string): string {
-		return value
-			.toLowerCase()
-			.replace(/^["'`]|["'`]$/g, "")
-			.trim();
-	}
-
-	/**
-	 * 파일 경로 기준 fallback skill 이름을 계산합니다.
-	 */
-	private guessSkillName(skillPath: string): string {
-		return path.basename(path.dirname(skillPath));
-	}
-
-	/**
-	 * skill 이름을 canonical slug로 정규화합니다.
-	 */
-	private normalizeSkillName(name: string): string {
-		return name
-			.trim()
-			.replace(/\.md$/i, "")
-			.replace(/^skill[-_]/i, "")
-			.replace(/\s+/g, "-")
-			.toLowerCase();
 	}
 
 	/**
@@ -3574,19 +3208,6 @@ export class SkillIndexService implements SkillIndexInterface {
 				})
 				.slice(0, limit),
 		};
-	}
-
-	/**
-	 * markdown 본문에서 첫 heading title을 추출합니다.
-	 */
-	private headingTitle(body: string): string {
-		for (const line of body.split(/\r?\n/)) {
-			const hit = /^(#+)\s*(.+)$/.exec(line.trim());
-			if (hit) {
-				return hit[2].trim().slice(0, 80);
-			}
-		}
-		return "";
 	}
 
 	/**

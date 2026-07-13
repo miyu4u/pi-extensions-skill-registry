@@ -1,3 +1,5 @@
+import { SkillDocumentParser } from "./indexing/skill-document-parser";
+import { SkillFileScanner } from "./indexing/skill-file-scanner";
 import { SkillIndexService } from "./indexing/skill-index.service";
 import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
 import { SkillSearchDatabaseService } from "./indexing/skill-search-database.service";
@@ -16,7 +18,9 @@ export const createSkillSearchDatabaseService = (): SkillSearchDatabaseService =
 
 const skillSearchDatabase = createSkillSearchDatabaseService();
 const skillInputNormalizer = new SkillInputNormalizer(settingsLoader);
-const skillIndex = new SkillIndexService(skillSearchDatabase, searchTokenizer);
+const skillFileScanner = new SkillFileScanner();
+const skillDocumentParser = new SkillDocumentParser();
+const skillIndex = new SkillIndexService(skillSearchDatabase, searchTokenizer, skillFileScanner, skillDocumentParser);
 
 export const SERVICE = {
 	settingsLoader,
@@ -26,5 +30,7 @@ export const SERVICE = {
 	promptGuidance,
 	skillSearchDatabase,
 	skillInputNormalizer,
+	skillFileScanner,
+	skillDocumentParser,
 	skillIndex,
 } as const;
