@@ -394,7 +394,14 @@ export class SkillDecisionEngine {
 				deferred: [],
 			};
 		}
-		const pack = this.relationEngine.projectSkills(index, query, names, relationMode, Math.max(summaryLimit, plan.steps.length), minScore);
+		const pack = this.relationEngine.projectSkills(
+			index,
+			query,
+			names,
+			relationMode,
+			Math.max(summaryLimit, plan.steps.length),
+			minScore,
+		);
 		const entryByName = new Map(pack.entries.map((entry) => [entry.name, entry] as const));
 		const phases: SkillRoutePhase[] = [];
 		for (const step of plan.steps.slice(0, summaryLimit)) {
@@ -685,5 +692,4 @@ export class SkillDecisionEngine {
 			candidates,
 		};
 	}
-
 }

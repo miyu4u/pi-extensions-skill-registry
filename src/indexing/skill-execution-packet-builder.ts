@@ -1,4 +1,3 @@
-import path from "node:path";
 import type {
 	IndexArtifacts,
 	SkillApplyPacketResult,
@@ -513,6 +512,4 @@ export class SkillExecutionPacketBuilder {
 			turn: executionPacket.turn,
 		};
 	}
-
-
 }

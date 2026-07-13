@@ -81,7 +81,11 @@ function makeSkill(params: {
 	};
 }
 
-function makeIndex(params: { skills: RawSkill[]; stats?: Partial<IndexedStats>; aliasToCanonical?: Iterable<[string, string]> }): IndexArtifacts {
+function makeIndex(params: {
+	skills: RawSkill[];
+	stats?: Partial<IndexedStats>;
+	aliasToCanonical?: Iterable<[string, string]>;
+}): IndexArtifacts {
 	const skills = params.skills;
 	const map = new Map<string, string>(
 		params.aliasToCanonical ??
@@ -106,9 +110,7 @@ function makeIndex(params: { skills: RawSkill[]; stats?: Partial<IndexedStats>; 
 	};
 }
 
-
 describe("skill-index diagnostics", () => {
-
 	test("validateIndex reports malformed, duplicate, and unresolved relation issues", () => {
 		const alpha = makeSkill({
 			id: "alpha",
@@ -187,19 +189,18 @@ describe("skill-index diagnostics", () => {
 			path: "/tmp/diag/dropped/shared.md",
 		});
 		expect(report.issues.filter((issue) => issue.kind === "duplicate-alias")).toHaveLength(2);
-		expect(
-			report.issues.find((issue) => issue.kind === "broken-required-relation")?.message,
-		).toBe("Required relation 'missing-required' from 'alpha' does not resolve.");
-		expect(
-			report.issues.find((issue) => issue.kind === "broken-recommended-relation")?.message,
-		).toBe("Recommended relation 'missing-recommended' from 'alpha' does not resolve.");
+		expect(report.issues.find((issue) => issue.kind === "broken-required-relation")?.message).toBe(
+			"Required relation 'missing-required' from 'alpha' does not resolve.",
+		);
+		expect(report.issues.find((issue) => issue.kind === "broken-recommended-relation")?.message).toBe(
+			"Recommended relation 'missing-recommended' from 'alpha' does not resolve.",
+		);
 		expect(report.issues.filter((issue) => issue.kind === "duplicate-alias")).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					severity: "warning",
 					kind: "duplicate-alias",
-					message:
-						"Alias 'shared-alias' resolves to 'gamma' and conflicts with 'delta'.",
+					message: "Alias 'shared-alias' resolves to 'gamma' and conflicts with 'delta'.",
 				}),
 				expect.objectContaining({
 					severity: "warning",
@@ -223,35 +224,35 @@ describe("skill-index diagnostics", () => {
 			graphSkills: (_index: IndexArtifacts, _query: string | undefined, _names: string[], mode: string): SkillRelationGraph =>
 				mode === "cycles"
 					? {
-						mode: "cycles",
-						seeds: [],
-						nodes: [],
-						edges: [],
-						readLayers: [],
-						applyLayers: [],
-						missing: [],
-						cycles: [["beta", "gamma", "delta"]],
-						orphans: [],
-						diagnostics: {
-							duplicateCanonicalEntries: [],
-							duplicateAliasEntries: [],
-						},
-					}
+							mode: "cycles",
+							seeds: [],
+							nodes: [],
+							edges: [],
+							readLayers: [],
+							applyLayers: [],
+							missing: [],
+							cycles: [["beta", "gamma", "delta"]],
+							orphans: [],
+							diagnostics: {
+								duplicateCanonicalEntries: [],
+								duplicateAliasEntries: [],
+							},
+						}
 					: {
-						mode: "orphans",
-						seeds: [],
-						nodes: [],
-						edges: [],
-						readLayers: [],
-						applyLayers: [],
-						missing: [],
-						cycles: [],
-						orphans: ["orphan"],
-						diagnostics: {
-							duplicateCanonicalEntries: [],
-							duplicateAliasEntries: [],
+							mode: "orphans",
+							seeds: [],
+							nodes: [],
+							edges: [],
+							readLayers: [],
+							applyLayers: [],
+							missing: [],
+							cycles: [],
+							orphans: ["orphan"],
+							diagnostics: {
+								duplicateCanonicalEntries: [],
+								duplicateAliasEntries: [],
+							},
 						},
-					},
 			buildRelationGraphEdges: (_index: IndexArtifacts): SkillRelationGraphEdge[] => edges,
 		} as unknown as SkillRelationEngine;
 

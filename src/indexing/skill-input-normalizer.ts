@@ -72,5 +72,4 @@ export class SkillInputNormalizer {
 		}
 		return raw.startsWith("~") ? path.join(os.homedir(), raw.slice(1)) : raw;
 	}
-
 }

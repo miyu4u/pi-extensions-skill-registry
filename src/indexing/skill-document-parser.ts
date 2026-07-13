@@ -42,9 +42,7 @@ export class SkillDocumentParser {
 
 		const uniqueAliases = [...new Set(aliases)].filter((entry) => entry !== canonicalName);
 		const uniqueRequires = [...new Set(requires)].filter((entry) => entry !== canonicalName);
-		const uniqueRecommends = [...new Set(recommends)].filter(
-			(entry) => entry !== canonicalName && !uniqueRequires.includes(entry),
-		);
+		const uniqueRecommends = [...new Set(recommends)].filter((entry) => entry !== canonicalName && !uniqueRequires.includes(entry));
 		return {
 			id: canonicalName,
 			canonicalName,

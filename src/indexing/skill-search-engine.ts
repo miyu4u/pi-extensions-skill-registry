@@ -390,13 +390,7 @@ export class SkillSearchEngine {
 	/**
 	 * compose/graph 공통 seed skill 집합을 계산합니다.
 	 */
-	resolveSeedSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		limit: number,
-		minScore: number,
-	): RawSkill[] {
+	resolveSeedSkills(index: IndexArtifacts, query: string | undefined, names: string[], limit: number, minScore: number): RawSkill[] {
 		const namedSeedSkills = this.findSkillsByNames(index, names);
 		const querySeedSkills = query ? this.searchByBm25(index, query, limit, minScore).map((hit) => hit.skill) : [];
 		return [...namedSeedSkills, ...querySeedSkills].filter(
@@ -404,5 +398,4 @@ export class SkillSearchEngine {
 				collection.findIndex((entry) => entry.canonicalName === skill.canonicalName) === indexPosition,
 		);
 	}
-
 }

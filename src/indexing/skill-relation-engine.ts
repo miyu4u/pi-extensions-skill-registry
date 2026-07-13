@@ -646,5 +646,4 @@ export class SkillRelationEngine {
 			return left.name.localeCompare(right.name);
 		});
 	}
-
 }

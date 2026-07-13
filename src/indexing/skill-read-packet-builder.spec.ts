@@ -1,14 +1,9 @@
 import { describe, expect, test } from "@jest/globals";
-import type {
-	IndexedStats,
-	IndexArtifacts,
-	RawSkill,
-	SkillRouteResult,
-} from "../shared";
-import { SkillReadPacketBuilder } from "./skill-read-packet-builder";
-import type { SkillIndexDiagnostics } from "./skill-index-diagnostics";
-import type { SkillRelationEngine, SkillRelationProjection } from "./skill-relation-engine";
+import type { IndexArtifacts, IndexedStats, RawSkill, SkillRouteResult } from "../shared";
 import type { SkillDecisionEngine } from "./skill-decision-engine";
+import type { SkillIndexDiagnostics } from "./skill-index-diagnostics";
+import { SkillReadPacketBuilder } from "./skill-read-packet-builder";
+import type { SkillRelationEngine, SkillRelationProjection } from "./skill-relation-engine";
 
 type FixturePackRow = {
 	name: string;
@@ -55,32 +50,34 @@ function makeIndex(fixtures: FixturePackRow[]): IndexArtifacts {
 		requestKey: "read-packet-spec",
 		settings: makeSettings(),
 		requestedNames: [],
-		skills: fixtures.map((fixture, index): RawSkill => ({
-			id: `skill-${index}`,
-			canonicalName: fixture.name,
-			path: fixture.path,
-			sourceRoot: "/tmp/source",
-			rawFrontmatter: {
-				name: fixture.name,
-			},
-			frontmatter: {
-				name: fixture.name,
+		skills: fixtures.map(
+			(fixture, index): RawSkill => ({
+				id: `skill-${index}`,
+				canonicalName: fixture.name,
+				path: fixture.path,
+				sourceRoot: "/tmp/source",
+				rawFrontmatter: {
+					name: fixture.name,
+				},
+				frontmatter: {
+					name: fixture.name,
+					category: "runtime",
+					requires: [],
+					recommends: [],
+					aliases: [],
+				},
+				bodyText: fixture.body,
+				title: fixture.name,
 				category: "runtime",
+				keywords: ["pack", "test"],
+				tags: ["routing"],
+				aliases: [],
 				requires: [],
 				recommends: [],
-				aliases: [],
-			},
-			bodyText: fixture.body,
-			title: fixture.name,
-			category: "runtime",
-			keywords: ["pack", "test"],
-			tags: ["routing"],
-			aliases: [],
-			requires: [],
-			recommends: [],
-			text: `${fixture.name} ${fixture.body}`,
-			mtimeMs: Date.now(),
-		})),
+				text: `${fixture.name} ${fixture.body}`,
+				mtimeMs: Date.now(),
+			}),
+		),
 		stats: makeStats(),
 		docCount: fixtures.length,
 		dfByTerm: new Map(),
@@ -151,7 +148,9 @@ function makeProjection(fixtures: FixturePackRow[]): SkillRelationProjection {
 	} as SkillRelationProjection;
 }
 
-function makeRouteResult(phases: Array<{ kind: "start" | "read-layer" | "apply-layer" | "fallback"; layer: number | null; names: string[] }>): SkillRouteResult {
+function makeRouteResult(
+	phases: Array<{ kind: "start" | "read-layer" | "apply-layer" | "fallback"; layer: number | null; names: string[] }>,
+): SkillRouteResult {
 	return {
 		query: "packet",
 		basis: "query",
@@ -169,7 +168,7 @@ function makeRouteResult(phases: Array<{ kind: "start" | "read-layer" | "apply-l
 	} as SkillRouteResult;
 }
 
-function makeBuilder(index: IndexArtifacts, route: SkillRouteResult, projection: SkillRelationProjection): SkillReadPacketBuilder {
+function makeBuilder(_index: IndexArtifacts, route: SkillRouteResult, projection: SkillRelationProjection): SkillReadPacketBuilder {
 	const relationEngine = {
 		projectSkills: (_index: IndexArtifacts) => projection,
 	} as unknown as SkillRelationEngine;
@@ -403,10 +402,7 @@ describe("skill-read-packet-builder", () => {
 		expect(resume.turns[0].phaseKind).toBe("read-layer");
 		expect(resume.turns[1].blockedByBudget).toBe(false);
 		expect(resume.turns[1].phaseKind).toBe("apply-layer");
-		expect(resume.nextCommands).toEqual([
-			'read("/tmp/recovery/block file.md")',
-			'read("/tmp/recovery/follow-up.md")',
-		]);
+		expect(resume.nextCommands).toEqual(['read("/tmp/recovery/block file.md")', 'read("/tmp/recovery/follow-up.md")']);
 
 		expect(current.activeTurnOrder).toBe(2);
 		expect(current.turn).toMatchObject({

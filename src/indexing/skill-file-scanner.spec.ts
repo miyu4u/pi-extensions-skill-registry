@@ -31,9 +31,7 @@ describe("skill file scanner", () => {
 
 		expect(result.mode).toBe("targeted");
 		expect(result.missingRoot).toBe(false);
-		expect(result.files.map(path.normalize).sort()).toEqual(
-			[path.normalize(directDirFile), path.normalize(directExtFile)].sort(),
-		);
+		expect(result.files.map(path.normalize).sort()).toEqual([path.normalize(directDirFile), path.normalize(directExtFile)].sort());
 		expect(new Set(result.files).size).toBe(result.files.length);
 	});
 
@@ -55,9 +53,7 @@ describe("skill file scanner", () => {
 
 		expect(result.mode).toBe("full");
 		expect(result.missingRoot).toBe(false);
-		expect(result.files.map(path.normalize).sort()).toEqual(
-			[path.normalize(foundFile), path.normalize(otherFile)].sort(),
-		);
+		expect(result.files.map(path.normalize).sort()).toEqual([path.normalize(foundFile), path.normalize(otherFile)].sort());
 	});
 
 	test("skips reserved directories during recursive scan", () => {
@@ -69,15 +65,7 @@ describe("skill file scanner", () => {
 		const keptFile = path.join(keepDir, "SKILL.md");
 		fs.writeFileSync(keptFile, "# kept", "utf-8");
 
-		const skipDirs = [
-			".git",
-			".svn",
-			"node_modules",
-			".venv",
-			"dist",
-			"build",
-			"out",
-		];
+		const skipDirs = [".git", ".svn", "node_modules", ".venv", "dist", "build", "out"];
 		for (const skip of skipDirs) {
 			const skipDir = path.join(root, skip);
 			fs.mkdirSync(skipDir, { recursive: true });

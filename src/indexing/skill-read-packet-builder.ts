@@ -466,9 +466,7 @@ export class SkillReadPacketBuilder {
 			}
 		}
 		const finalizedEntries = entries.map((entry) =>
-			selectedBodyPaths.has(entry.readPath)
-				? entry
-				: { ...entry, body: undefined, omittedByBudget: Boolean(entry.body) },
+			selectedBodyPaths.has(entry.readPath) ? entry : { ...entry, body: undefined, omittedByBudget: Boolean(entry.body) },
 		);
 		return {
 			ok: projection.missing.every((entry) => entry.relation !== "required") && projection.cycles.length === 0 && validation.ok,
@@ -507,5 +505,4 @@ export class SkillReadPacketBuilder {
 		}
 		return left.name.localeCompare(right.name);
 	}
-
 }

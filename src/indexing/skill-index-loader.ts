@@ -277,5 +277,4 @@ export class SkillIndexLoader {
 		}
 		return aliasToCanonical;
 	}
-
 }

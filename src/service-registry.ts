@@ -1,12 +1,12 @@
 import { SkillDocumentParser } from "./indexing/skill-document-parser";
 import { SkillFileScanner } from "./indexing/skill-file-scanner";
-import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
 import { SkillIndexDiagnostics } from "./indexing/skill-index-diagnostics";
 import { SkillIndexLoader } from "./indexing/skill-index-loader";
-import { SkillRelationEngine } from "./indexing/skill-relation-engine";
+import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
 import { SkillReadPacketBuilder } from "./indexing/skill-read-packet-builder";
-import { SkillSearchEngine } from "./indexing/skill-search-engine";
+import { SkillRelationEngine } from "./indexing/skill-relation-engine";
 import { SkillSearchDatabaseService } from "./indexing/skill-search-database.service";
+import { SkillSearchEngine } from "./indexing/skill-search-engine";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
 import { SettingsLoaderService } from "./settings/settings-loader.service";
 import { EnglishFuzzyMatcherService } from "./tokenization/english-fuzzy-matcher.service";
@@ -57,6 +57,7 @@ export const SERVICE = {
 	skillReadPacketBuilder,
 	skillExecutionPacketBuilder,
 } as const;
+
 import { ActiveIndexStore } from "./indexing/active-index-store";
 import { SkillDecisionEngine } from "./indexing/skill-decision-engine";
 import { SkillExecutionPacketBuilder } from "./indexing/skill-execution-packet-builder";

@@ -1,10 +1,5 @@
 import { describe, expect, test } from "@jest/globals";
-import type {
-	IndexArtifacts,
-	IndexedStats,
-	RawSkill,
-	SearchHit,
-} from "../shared";
+import type { IndexArtifacts, IndexedStats, RawSkill, SearchHit } from "../shared";
 import { SkillDecisionEngine } from "./skill-decision-engine";
 import type { SkillRelationEngine } from "./skill-relation-engine";
 import type { SkillSearchEngine } from "./skill-search-engine";
@@ -638,9 +633,7 @@ describe("skill-decision-engine", () => {
 		]);
 		const searchEngine = createSearchEngine({
 			hitsByQuery: {
-				throughput: [
-					{ canonicalName: "core", score: 3.5, coverage: 1, matchedTerms: ["throughput"] },
-				],
+				throughput: [{ canonicalName: "core", score: 3.5, coverage: 1, matchedTerms: ["throughput"] }],
 			},
 		});
 		const relationEngine = createRelationEngine({

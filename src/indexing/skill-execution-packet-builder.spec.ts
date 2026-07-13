@@ -1,9 +1,5 @@
 import { describe, expect, jest, test } from "@jest/globals";
-import type {
-	IndexArtifacts,
-	SkillCurrentTurnPacketResult,
-	SkillTurnPacketTurn,
-} from "../shared";
+import type { IndexArtifacts, SkillCurrentTurnPacketResult, SkillTurnPacketTurn } from "../shared";
 import { SkillExecutionPacketBuilder } from "./skill-execution-packet-builder";
 import type { SkillReadPacketBuilder } from "./skill-read-packet-builder";
 
@@ -16,10 +12,7 @@ const baseTurn: SkillTurnPacketTurn = {
 	sourcePaths: ["/tmp/alpha.md", "/tmp/beta.md"],
 	nextCommands: ['read("/tmp/alpha.md")', 'read("/tmp/beta.md")'],
 	objective: "Inspect layered read paths before applying next steps.",
-	checklist: [
-		"Resolve direct dependencies before optional extension.",
-		"Validate checklist ordering in generated packets.",
-	],
+	checklist: ["Resolve direct dependencies before optional extension.", "Validate checklist ordering in generated packets."],
 	exitCriteria: ["Dependency skills are fully reviewed.", "No omitted read bodies remain."],
 	blockedByBudget: false,
 };
@@ -74,16 +67,7 @@ describe("skill-execution-packet-builder", () => {
 		const { index, readBuilder, currentTurnPacketSkills } = makeBuilderStub(makeTurnPacket());
 		const builder = new SkillExecutionPacketBuilder(readBuilder);
 
-		const instructionPacket = builder.instructionPacketSkills(
-			index,
-			"execution-query",
-			["alpha", "beta"],
-			"full",
-			777,
-			199,
-			9,
-			0.2,
-		);
+		const instructionPacket = builder.instructionPacketSkills(index, "execution-query", ["alpha", "beta"], "full", 777, 199, 9, 0.2);
 
 		expect(currentTurnPacketSkills).toHaveBeenCalledTimes(1);
 		expect(currentTurnPacketSkills).toHaveBeenCalledWith(index, "execution-query", ["alpha", "beta"], "full", 777, 199, 9, 0.2);
@@ -100,7 +84,7 @@ describe("skill-execution-packet-builder", () => {
 				"Focus on turn 2 (read-layer:1).",
 				"Read skills: alpha, beta.",
 				"Inspect layered read paths before applying next steps.",
-				"Commands:\nread(\"/tmp/alpha.md\")\nread(\"/tmp/beta.md\")",
+				'Commands:\nread("/tmp/alpha.md")\nread("/tmp/beta.md")',
 				"Checklist:\n1. Resolve direct dependencies before optional extension.\n2. Validate checklist ordering in generated packets.",
 			].join("\n"),
 		);
@@ -194,7 +178,7 @@ describe("skill-execution-packet-builder", () => {
 		expect(writeScriptPacket.commandBlock).toBe("bun packets/alpha-turn-2.write.ts");
 		expect(writeScriptPacket.writes).toEqual(expectedWrites);
 		expect(writeScriptPacket.scriptContent).toContain(`const writes = ${JSON.stringify(expectedWrites, null, 2)} as const;`);
-		expect(writeScriptPacket.scriptContent).toContain('await Bun.write(write.path, write.content);');
+		expect(writeScriptPacket.scriptContent).toContain("await Bun.write(write.path, write.content);");
 	});
 
 	test("projects execution and verification packets with ordered run/verify content", () => {
@@ -237,9 +221,16 @@ describe("skill-execution-packet-builder", () => {
 		const readPacket = makeTurnPacket();
 		const { index, readBuilder, currentTurnPacketSkills } = makeBuilderStub(readPacket);
 		const builder = new SkillExecutionPacketBuilder(readBuilder);
-		const invocationArgs: Parameters<
-			SkillExecutionPacketBuilder["instructionPacketSkills"]
-		> = [index, "budget-query", ["alpha", "beta"], "required", 4096, 333, 17, 0.42];
+		const invocationArgs: Parameters<SkillExecutionPacketBuilder["instructionPacketSkills"]> = [
+			index,
+			"budget-query",
+			["alpha", "beta"],
+			"required",
+			4096,
+			333,
+			17,
+			0.42,
+		];
 		const instructionPacket = builder.instructionPacketSkills(...invocationArgs);
 		const markdownPacket = builder.markdownPacketSkills(...invocationArgs);
 		const checklistPacket = builder.checklistPacketSkills(...invocationArgs);
@@ -283,12 +274,7 @@ describe("skill-execution-packet-builder", () => {
 		expect(verificationPacket.verificationItems).toEqual(["Run command completed without write errors."]);
 		expect(verificationPacket.verificationCommands).toEqual(["bun packets/alpha-turn-2.write.ts"]);
 		expect(verificationPacket.verificationText).toBe(
-			[
-				"Run:",
-				"bun packets/alpha-turn-2.write.ts",
-				"",
-				"Verify:\n1. Run command completed without write errors.",
-			].join("\n"),
+			["Run:", "bun packets/alpha-turn-2.write.ts", "", "Verify:\n1. Run command completed without write errors."].join("\n"),
 		);
 	});
 });

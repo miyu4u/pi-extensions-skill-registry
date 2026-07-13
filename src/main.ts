@@ -75,10 +75,12 @@ function wireTools(pi: ExtensionAPI): void {
 						if (!normalized.query) {
 							return errorResult("`discover` 동작은 query가 필요합니다. (예: {action:'discover', query:'commit staging'})");
 						}
-						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(artifacts,
+						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(
+							artifacts,
 							normalized.query,
 							normalized.limit,
-							normalized.minScore,);
+							normalized.minScore,
+						);
 						return buildDiscoverResult(artifacts, searchResult.hits, normalized, searchResult.diagnostics);
 					}
 					case "index":
@@ -87,17 +89,24 @@ function wireTools(pi: ExtensionAPI): void {
 						if (!normalized.query) {
 							return errorResult("`search` 동작은 query가 필요합니다. (예: {action:'search', query:'review code'})");
 						}
-						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(artifacts,
+						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(
+							artifacts,
 							normalized.query,
 							normalized.limit,
-							normalized.minScore,);
+							normalized.minScore,
+						);
 						return buildSearchResult(artifacts, searchResult.hits, normalized, searchResult.diagnostics);
 					}
 					case "select": {
 						if (!normalized.query) {
 							return errorResult("`select` 동작은 query가 필요합니다. (예: {action:'select', query:'metrics', limit: 5})");
 						}
-						const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, normalized.query, normalized.limit, normalized.minScore);
+						const hits = SERVICE.skillSearchEngine.searchByBm25(
+							artifacts,
+							normalized.query,
+							normalized.limit,
+							normalized.minScore,
+						);
 						return buildSelectResult(artifacts, hits, normalized);
 					}
 					case "compose": {
@@ -106,12 +115,14 @@ function wireTools(pi: ExtensionAPI): void {
 								"`compose` 동작은 query 또는 names가 필요합니다. (예: {action:'compose', query:'typescript feature', relationMode:'full'})",
 							);
 						}
-						const plan = SERVICE.skillRelationEngine.composeSkills(artifacts,
+						const plan = SERVICE.skillRelationEngine.composeSkills(
+							artifacts,
 							normalized.query,
 							normalized.names,
 							normalized.limit,
 							normalized.relationMode,
-							normalized.minScore,);
+							normalized.minScore,
+						);
 						return buildComposeResult(artifacts, plan, normalized);
 					}
 					case "resolve": {
@@ -122,11 +133,13 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildResolveResult(
 							artifacts,
-							SERVICE.skillSearchEngine.resolveSkills(artifacts,
+							SERVICE.skillSearchEngine.resolveSkills(
+								artifacts,
 								normalized.orderedNames,
 								normalized.includeBody,
 								normalized.budgetChars,
-								normalized.budgetTokens,),
+								normalized.budgetTokens,
+							),
 						);
 					}
 					case "pack": {
@@ -137,7 +150,8 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildPackResult(
 							artifacts,
-							SERVICE.skillReadPacketBuilder.packSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.packSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
@@ -145,7 +159,8 @@ function wireTools(pi: ExtensionAPI): void {
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "graph": {
@@ -160,12 +175,14 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildGraphResult(
 							artifacts,
-							SERVICE.skillRelationEngine.graphSkills(artifacts,
+							SERVICE.skillRelationEngine.graphSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.graphMode,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "gap": {
@@ -173,12 +190,14 @@ function wireTools(pi: ExtensionAPI): void {
 							return errorResult("`gap` 동작은 query가 필요합니다. (예: {action:'gap', query:'typescript contract review'})");
 						}
 						return buildGapResult(
-							SERVICE.skillSearchEngine.gapSkills(artifacts,
+							SERVICE.skillSearchEngine.gapSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.coverageThreshold,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "explain": {
@@ -188,12 +207,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildExplainResult(
-							SERVICE.skillDecisionEngine.explainSkills(artifacts,
+							SERVICE.skillDecisionEngine.explainSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "decide": {
@@ -203,11 +224,13 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildDecideResult(
-							SERVICE.skillDecisionEngine.decideSkills(artifacts,
+							SERVICE.skillDecisionEngine.decideSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "plan": {
@@ -217,12 +240,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildPlanResult(
-							SERVICE.skillDecisionEngine.planSkills(artifacts,
+							SERVICE.skillDecisionEngine.planSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "route": {
@@ -232,12 +257,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRouteResult(
-							SERVICE.skillDecisionEngine.routeSkills(artifacts,
+							SERVICE.skillDecisionEngine.routeSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "brief": {
@@ -247,7 +274,8 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildBriefResult(
-							SERVICE.skillReadPacketBuilder.briefSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.briefSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
@@ -255,7 +283,8 @@ function wireTools(pi: ExtensionAPI): void {
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "bundle": {
@@ -265,14 +294,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildBundleResult(
-							SERVICE.skillReadPacketBuilder.bundleSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.bundleSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "handoff": {
@@ -282,14 +313,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildHandoffResult(
-							SERVICE.skillReadPacketBuilder.handoffSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.handoffSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "session-packet": {
@@ -299,14 +332,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildSessionPacketResult(
-							SERVICE.skillReadPacketBuilder.sessionPacketSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.sessionPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "turn-packet": {
@@ -316,14 +351,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildTurnPacketResult(
-							SERVICE.skillReadPacketBuilder.turnPacketSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.turnPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "recovery-packet": {
@@ -333,14 +370,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRecoveryPacketResult(
-							SERVICE.skillReadPacketBuilder.recoveryPacketSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.recoveryPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "resume-packet": {
@@ -350,14 +389,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildResumePacketResult(
-							SERVICE.skillReadPacketBuilder.resumePacketSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.resumePacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "current-turn-packet": {
@@ -367,14 +408,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCurrentTurnPacketResult(
-							SERVICE.skillReadPacketBuilder.currentTurnPacketSkills(artifacts,
+							SERVICE.skillReadPacketBuilder.currentTurnPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "instruction-packet": {
@@ -384,14 +427,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildInstructionPacketResult(
-							SERVICE.skillExecutionPacketBuilder.instructionPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.instructionPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "summary-packet": {
@@ -401,14 +446,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildSummaryPacketResult(
-							SERVICE.skillExecutionPacketBuilder.summaryPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.summaryPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "markdown-packet": {
@@ -418,14 +465,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildMarkdownPacketResult(
-							SERVICE.skillExecutionPacketBuilder.markdownPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.markdownPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "checklist-packet": {
@@ -435,14 +484,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildChecklistPacketResult(
-							SERVICE.skillExecutionPacketBuilder.checklistPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.checklistPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "commands-packet": {
@@ -452,14 +503,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCommandsPacketResult(
-							SERVICE.skillExecutionPacketBuilder.commandsPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.commandsPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "file-ready-packet": {
@@ -469,14 +522,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildFileReadyPacketResult(
-							SERVICE.skillExecutionPacketBuilder.fileReadyPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.fileReadyPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "apply-packet": {
@@ -486,14 +541,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildApplyPacketResult(
-							SERVICE.skillExecutionPacketBuilder.applyPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.applyPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "write-script-packet": {
@@ -503,14 +560,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildWriteScriptPacketResult(
-							SERVICE.skillExecutionPacketBuilder.writeScriptPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.writeScriptPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "execution-packet": {
@@ -520,14 +579,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildExecutionPacketResult(
-							SERVICE.skillExecutionPacketBuilder.executionPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.executionPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "verification-packet": {
@@ -537,14 +598,16 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildVerificationPacketResult(
-							SERVICE.skillExecutionPacketBuilder.verificationPacketSkills(artifacts,
+							SERVICE.skillExecutionPacketBuilder.verificationPacketSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "compare": {
@@ -554,11 +617,13 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCompareResult(
-							SERVICE.skillDecisionEngine.compareSkills(artifacts,
+							SERVICE.skillDecisionEngine.compareSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "recommend": {
@@ -568,22 +633,26 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRecommendResult(
-							SERVICE.skillDecisionEngine.recommendSkills(artifacts,
+							SERVICE.skillDecisionEngine.recommendSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					}
 					case "audit":
 						return buildAuditResult(
 							artifacts,
-							SERVICE.skillIndexDiagnostics.auditSkills(artifacts,
+							SERVICE.skillIndexDiagnostics.auditSkills(
+								artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.limit,
-								normalized.minScore,),
+								normalized.minScore,
+							),
 						);
 					case "validate":
 						return buildValidateResult(artifacts, SERVICE.skillIndexDiagnostics.validateIndex(artifacts));

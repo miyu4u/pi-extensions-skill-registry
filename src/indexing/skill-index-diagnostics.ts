@@ -272,5 +272,4 @@ export class SkillIndexDiagnostics {
 				.slice(0, limit),
 		};
 	}
-
 }

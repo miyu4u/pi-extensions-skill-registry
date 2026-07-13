@@ -1,9 +1,7 @@
 import type { IndexedStats } from "../shared";
 
 /** duplicate alias diagnostics를 deterministic하게 dedupe합니다. */
-export const dedupeDuplicateAliasEntries = (
-	entries: IndexedStats["duplicateAliasEntries"],
-): IndexedStats["duplicateAliasEntries"] => {
+export const dedupeDuplicateAliasEntries = (entries: IndexedStats["duplicateAliasEntries"]): IndexedStats["duplicateAliasEntries"] => {
 	const deduped = new Map<string, IndexedStats["duplicateAliasEntries"][number]>();
 	for (const entry of entries) {
 		deduped.set(`${entry.alias}:${entry.canonicalName}:${entry.conflictingCanonicalName}`, entry);

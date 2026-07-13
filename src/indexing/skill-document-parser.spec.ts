@@ -29,8 +29,8 @@ describe("skill document parser", () => {
 				"name: My Observability Guide.md",
 				"description: Observability diagnostics and readiness checks.",
 				"group: Runtime",
-				"tag: Ops, \"Reliability\"",
-				"keywords: [Tracing, SLO, \"Latency\"]",
+				'tag: Ops, "Reliability"',
+				'keywords: [Tracing, SLO, "Latency"]',
 				"aliases:",
 				"- OBS-GUIDE",
 				"- my-observability-guide",
@@ -71,9 +71,7 @@ describe("skill document parser", () => {
 		expect(parsed?.requires).toEqual(["runtime-tooling", "tracing-stack"]);
 		expect(parsed?.recommends).toEqual(["related-reads"]);
 		expect(parsed?.title).toBe("Operational Observability");
-		expect(parsed?.bodyText).toBe(
-			"# Operational Observability\n\nThis skill documents practical rollout checks for stable telemetry.",
-		);
+		expect(parsed?.bodyText).toBe("# Operational Observability\n\nThis skill documents practical rollout checks for stable telemetry.");
 		expect(parsed?.category).toBe("Runtime");
 	});
 
@@ -96,7 +94,7 @@ describe("skill document parser", () => {
 				"requires:",
 				"- legacy-guide",
 				"recommends: legacy-guide, related-skill",
-				"tags: [Ops, \"Runtime\"]",
+				'tags: [Ops, "Runtime"]',
 				"---",
 				"# Legacy recovery title",
 				"",
@@ -118,9 +116,7 @@ describe("skill document parser", () => {
 		expect(parsed?.requires).toEqual([]);
 		expect(parsed?.recommends).toEqual(["related-skill"]);
 		expect(parsed?.title).toBe("Legacy recovery title");
-		expect(parsed?.bodyText).toBe(
-			"# Legacy recovery title\n\nBody text should still parse even when frontmatter has noise.",
-		);
+		expect(parsed?.bodyText).toBe("# Legacy recovery title\n\nBody text should still parse even when frontmatter has noise.");
 	});
 
 	test("records read failures instead of throwing", () => {
