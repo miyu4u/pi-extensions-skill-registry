@@ -137,8 +137,7 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildPackResult(
 							artifacts,
-							SERVICE.skillIndex.packSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.packSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
@@ -146,8 +145,7 @@ function wireTools(pi: ExtensionAPI): void {
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "graph": {
@@ -249,8 +247,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildBriefResult(
-							SERVICE.skillIndex.briefSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.briefSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
@@ -258,8 +255,7 @@ function wireTools(pi: ExtensionAPI): void {
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "bundle": {
@@ -269,16 +265,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildBundleResult(
-							SERVICE.skillIndex.bundleSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.bundleSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "handoff": {
@@ -288,16 +282,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildHandoffResult(
-							SERVICE.skillIndex.handoffSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.handoffSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "session-packet": {
@@ -307,16 +299,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildSessionPacketResult(
-							SERVICE.skillIndex.sessionPacketSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.sessionPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "turn-packet": {
@@ -326,16 +316,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildTurnPacketResult(
-							SERVICE.skillIndex.turnPacketSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.turnPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "recovery-packet": {
@@ -345,16 +333,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRecoveryPacketResult(
-							SERVICE.skillIndex.recoveryPacketSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.recoveryPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "resume-packet": {
@@ -364,16 +350,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildResumePacketResult(
-							SERVICE.skillIndex.resumePacketSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.resumePacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "current-turn-packet": {
@@ -383,16 +367,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCurrentTurnPacketResult(
-							SERVICE.skillIndex.currentTurnPacketSkills(
-								artifacts,
+							SERVICE.skillReadPacketBuilder.currentTurnPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "instruction-packet": {

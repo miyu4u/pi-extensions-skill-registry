@@ -5,6 +5,7 @@ import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
 import { SkillIndexDiagnostics } from "./indexing/skill-index-diagnostics";
 import { SkillIndexLoader } from "./indexing/skill-index-loader";
 import { SkillRelationEngine } from "./indexing/skill-relation-engine";
+import { SkillReadPacketBuilder } from "./indexing/skill-read-packet-builder";
 import { SkillSearchEngine } from "./indexing/skill-search-engine";
 import { SkillSearchDatabaseService } from "./indexing/skill-search-database.service";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
@@ -29,6 +30,7 @@ const skillSearchEngine = new SkillSearchEngine(skillSearchDatabase, searchToken
 const skillRelationEngine = new SkillRelationEngine(skillSearchEngine);
 const skillIndexDiagnostics = new SkillIndexDiagnostics(skillRelationEngine);
 const skillDecisionEngine = new SkillDecisionEngine(skillSearchEngine, skillRelationEngine);
+const skillReadPacketBuilder = new SkillReadPacketBuilder(skillRelationEngine, skillIndexDiagnostics, skillDecisionEngine);
 const skillIndexLoader = new SkillIndexLoader(
 	skillSearchDatabase,
 	searchTokenizer,
@@ -36,7 +38,7 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillDocumentParser,
 	activeIndexStore,
 );
-const skillIndex = new SkillIndexService(skillRelationEngine, skillIndexDiagnostics, skillDecisionEngine);
+const skillIndex = new SkillIndexService(skillReadPacketBuilder);
 
 export const SERVICE = {
 	settingsLoader,
@@ -53,6 +55,7 @@ export const SERVICE = {
 	skillRelationEngine,
 	skillIndexDiagnostics,
 	skillDecisionEngine,
+	skillReadPacketBuilder,
 	skillIndex,
 } as const;
 import { ActiveIndexStore } from "./indexing/active-index-store";

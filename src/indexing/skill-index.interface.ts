@@ -1,23 +1,14 @@
 import type {
 	IndexArtifacts,
 	SkillApplyPacketResult,
-	SkillBriefResult,
-	SkillBundleResult,
 	SkillChecklistPacketResult,
 	SkillCommandsPacketResult,
-	SkillCurrentTurnPacketResult,
 	SkillExecutionPacketResult,
 	SkillFileReadyPacketResult,
-	SkillHandoffResult,
 	SkillInstructionPacketResult,
 	SkillMarkdownPacketResult,
-	SkillPack,
-	SkillRecoveryPacketResult,
 	SkillRelationMode,
-	SkillResumePacketResult,
-	SkillSessionPacketResult,
 	SkillSummaryPacketResult,
-	SkillTurnPacketResult,
 	SkillVerificationPacketResult,
 	SkillWriteScriptPacketResult,
 } from "../shared";
@@ -28,197 +19,6 @@ import type {
  * 변환 단계별 책임을 타입 레벨에서 일관되게 고정합니다.
  */
 export interface SkillIndexInterface {
-
-	/**
-	 * route 결과를 읽기 제한 조건에 맞춰 bounded brief packet로 축약합니다.
-	 * includeBody 및 예산 단위를 적용해 불필요한 상세정보를 제거하고,
-	 * 다음 bundle/handoff 단계에서 크기 통제가 가능한 형태로 변환합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 라우팅 관계 모드
-	 * @param includeBody 본문 포함 여부
-	 * @param budgetChars 출력 문자 수 제약
-	 * @param budgetTokens 출력 토큰 수 제약
-	 * @returns 경량화된 브리핑 결과
-	 */
-	briefSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		includeBody?: boolean,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillBriefResult;
-
-	/**
-	 * brief를 agent-ready preset로 결합해 읽기 전용 bundle을 구성합니다.
-	 * 실행 체계가 동일한 환경에서도 바로 사용할 수 있도록 메타 + 순서 + 바인딩을
-	 * 하나의 묶음으로 정규화합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param budgetChars 출력 문자 예산
-	 * @param budgetTokens 출력 토큰 예산
-	 * @returns handoff 전단계에서 바로 소비 가능한 SkillBundleResult
-	 */
-	bundleSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillBundleResult;
-
-	/**
-	 * bundle 결과에 source/next command 힌트를 덧붙여 handoff packet으로 변환합니다.
-	 * 단순 데이터 묶음이 아니라 다음 실행 주체가 이어서 작업할 수 있도록
-	 * 전환 포인트를 가진 실행 지침 메타데이터를 함께 제공합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param budgetChars 출력 문자 예산
-	 * @param budgetTokens 출력 토큰 예산
-	 * @returns 인수인계용 handoff 데이터
-	 */
-	handoffSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillHandoffResult;
-
-	/**
-	 * handoff 결과를 세션 단위로 순서 정렬해 session-ready packet으로 투영합니다.
-	 * 다중 턴을 안전하게 연속 처리하기 위해 handoff의 임시 정보를 세션 정렬 규칙으로
-	 * 정돈해 저장/재개 흐름에 적합하게 바꿉니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param budgetChars 출력 문자 예산
-	 * @param budgetTokens 출력 토큰 예산
-	 * @returns 세션 실행용 SkillSessionPacketResult
-	 */
-	sessionPacketSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillSessionPacketResult;
-
-	/**
-	 * session packet을 turn 단위 execution packet으로 나눕니다.
-	 * 하나의 세션 패킷을 실행 가능한 작은 단위로 분할해 현재 턴 실행이 가능한 입력으로 전환하는,
-	 * 명령 배치용 변환 단계입니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param budgetChars 출력 문자 예산
-	 * @param budgetTokens 출력 토큰 예산
-	 * @returns turn 단위로 정렬된 SkillTurnPacketResult
-	 */
-	turnPacketSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillTurnPacketResult;
-
-	/**
-	 * turn packet에서 장애 복구가 필요한 turn만 선별해 recovery packet으로 재구성합니다.
-	 * 성공한 turn을 걸러내고 실패/중단 turn만 남겨 재개 비용을 줄이는 전환 단계입니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param budgetChars 출력 문자 예산
-	 * @param budgetTokens 출력 토큰 예산
-	 * @returns 복구 대상만 담은 SkillRecoveryPacketResult
-	 */
-	recoveryPacketSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillRecoveryPacketResult;
-
-	/**
-	 * recovery 경로에서 남은 turn sequence를 이어서 실행할 수 있도록 재조합합니다.
-	 * 실패 구간 이후의 연속성만 살려 반환하므로 중복 작업 없이 재개가 가능해집니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param budgetChars 출력 문자 예산
-	 * @param budgetTokens 출력 토큰 예산
-	 * @returns 재개용 SkillResumePacketResult
-	 */
-	resumePacketSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillResumePacketResult;
-
-	/**
-	 * resume 단계에서 즉시 실행 가능한 첫 번째 turn만 packet으로 추출합니다.
-	 * 실행 큐를 더 쪼개, 사용자 인터랙션 지연을 줄이고 현재 작업 단위를 즉시 보여주기 위한 단계입니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param budgetChars 출력 문자 예산
-	 * @param budgetTokens 출력 토큰 예산
-	 * @returns 현재 턴 패킷 하나를 담은 SkillCurrentTurnPacketResult
-	 */
-	currentTurnPacketSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		budgetChars?: number,
-		budgetTokens?: number,
-		limit?: number,
-		minScore?: number,
-	): SkillCurrentTurnPacketResult;
 
 	/**
 	 * current turn packet을 모델이 바로 사용할 수 있는 prompt-ready 실행 지시문으로 직렬화합니다.
@@ -453,32 +253,6 @@ export interface SkillIndexInterface {
 		limit?: number,
 		minScore?: number,
 	): SkillVerificationPacketResult;
-
-	/**
-	 * compose, graph, validate 결과를 한 번의 snapshot pack으로 통합합니다.
-	 * 서로 다른 단계의 산출물을 별도로 조립하지 않고 한 구조로 묶어,
-	 * consume 쪽에서 변환 비용 없이 즉시 해석 가능한 패킷을 제공합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 모드
-	 * @param includeBody 본문 포함 여부
-	 * @param budgetChars 문자 예산
-	 * @param budgetTokens 토큰 예산
-	 * @returns compose/graph/validate 통합 결과 SkillPack
-	 */
-	packSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode: SkillRelationMode | undefined,
-		includeBody: boolean,
-		budgetChars: number,
-		budgetTokens: number,
-		limit?: number,
-		minScore?: number,
-	): SkillPack;
 
 
 }
