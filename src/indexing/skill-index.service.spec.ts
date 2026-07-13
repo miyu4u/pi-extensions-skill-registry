@@ -79,7 +79,7 @@ describe("skill-index service", () => {
 
 	/** 인덱스가 문서 수와 통계를 계산하는지 검증합니다. */
 	test("indexes all skills and computes doc and file stats", async () => {
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "index",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -96,7 +96,7 @@ describe("skill-index service", () => {
 	test("resolves exact names and aliases in request order", async () => {
 		writeSkill(root, "review", "Review guide body.", { aliases: "review-guide" });
 		writeSkill(root, "typescript-developer", "TypeScript guide body.", { aliases: "tsdev" });
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "resolve",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -113,7 +113,7 @@ describe("skill-index service", () => {
 	test("expands compose relations from alias seeds", async () => {
 		writeSkill(root, "review", "Review guide body.", { aliases: "review-guide" });
 		writeSkill(root, "typescript-developer", "TypeScript guide body.", { aliases: "tsdev", requires: "review-guide" });
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "compose",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -132,7 +132,7 @@ describe("skill-index service", () => {
 	test("returns canonical title match first", async () => {
 		writeSkill(root, "observability", "Observability is discussed only in this body text.", { aliases: "ops-observability" });
 		writeSkill(root, "runtime-playbook", "A detailed runtime playbook with observability references for operations.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -149,7 +149,7 @@ describe("skill-index service", () => {
 	/** typo 조회가 en-fuzzy 후보로 동일 canonical에 도달하지만 exact 점수보다 낮은지 검증합니다. */
 	test("keeps typo observations lower than exact score", async () => {
 		writeSkill(root, "observability", "Observability body with strict ranking details.");
-		const exact = SERVICE.skillIndex.normalizeToolInput({
+		const exact = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -159,7 +159,7 @@ describe("skill-index service", () => {
 		const exactArtifacts = await SERVICE.skillIndex.loadIndex(exact);
 		const exactHits = SERVICE.skillIndex.searchByBm25(exactArtifacts, exact.query, exact.limit, exact.minScore);
 
-		const typo = SERVICE.skillIndex.normalizeToolInput({
+		const typo = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -177,7 +177,7 @@ describe("skill-index service", () => {
 	/** 4자 prefix fallback가 동작하는지 검증합니다. */
 	test("resolves through four-character prefix fallback", async () => {
 		writeSkill(root, "observability", "Observability operations and monitoring for production teams.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -195,7 +195,7 @@ describe("skill-index service", () => {
 	test("sorts equal-scoring hits by canonical name", async () => {
 		writeSkill(root, "zeta-alpha", "alpha");
 		writeSkill(root, "alpha-zeta", "alpha");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -214,7 +214,7 @@ describe("skill-index service", () => {
 	/** minScore 상한값 바로 위에서 결과가 제거되는지 검증합니다. */
 	test("removes score below minScore threshold", async () => {
 		writeSkill(root, "observability", "Observability and ranking guidance.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -236,7 +236,7 @@ describe("skill-index service", () => {
 		const corpusRoot = path.join(root, "persistent-corpus");
 		writeSkill(corpusRoot, "review", "Canonical review body.", { aliases: "review-skill", requires: "observability" });
 		writeSkill(corpusRoot, "observability", "Observability body with deep operational details.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [corpusRoot],
 			fileNames: ["SKILL.md"],
@@ -266,7 +266,7 @@ describe("skill-index service", () => {
 	/** refresh true가 snapshot을 무시하고 source rewrite를 반영하는지 검증합니다. */
 	test("refresh:true ignores cache and reflects rewritten source content", async () => {
 		writeSkill(root, "observability", "Original source body.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],

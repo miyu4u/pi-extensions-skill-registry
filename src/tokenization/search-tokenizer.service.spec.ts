@@ -79,7 +79,7 @@ describe("search tokenizer service", () => {
 			query: "observability",
 			refresh: true,
 		};
-		const normalized = SERVICE.skillIndex.normalizeToolInput(ctx);
+		const normalized = SERVICE.skillInputNormalizer.normalizeToolInput(ctx);
 		const artifacts = await SERVICE.skillIndex.loadIndex(normalized);
 		const variants = SERVICE.searchTokenizer.buildQueryVariants(artifacts, "obesrvability");
 
