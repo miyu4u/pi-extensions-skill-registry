@@ -384,16 +384,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildInstructionPacketResult(
-							SERVICE.skillIndex.instructionPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.instructionPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "summary-packet": {
@@ -403,16 +401,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildSummaryPacketResult(
-							SERVICE.skillIndex.summaryPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.summaryPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "markdown-packet": {
@@ -422,16 +418,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildMarkdownPacketResult(
-							SERVICE.skillIndex.markdownPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.markdownPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "checklist-packet": {
@@ -441,16 +435,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildChecklistPacketResult(
-							SERVICE.skillIndex.checklistPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.checklistPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "commands-packet": {
@@ -460,16 +452,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCommandsPacketResult(
-							SERVICE.skillIndex.commandsPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.commandsPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "file-ready-packet": {
@@ -479,16 +469,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildFileReadyPacketResult(
-							SERVICE.skillIndex.fileReadyPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.fileReadyPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "apply-packet": {
@@ -498,16 +486,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildApplyPacketResult(
-							SERVICE.skillIndex.applyPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.applyPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "write-script-packet": {
@@ -517,16 +503,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildWriteScriptPacketResult(
-							SERVICE.skillIndex.writeScriptPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.writeScriptPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "execution-packet": {
@@ -536,16 +520,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildExecutionPacketResult(
-							SERVICE.skillIndex.executionPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.executionPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "verification-packet": {
@@ -555,16 +537,14 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildVerificationPacketResult(
-							SERVICE.skillIndex.verificationPacketSkills(
-								artifacts,
+							SERVICE.skillExecutionPacketBuilder.verificationPacketSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.budgetChars,
 								normalized.budgetTokens,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "compare": {

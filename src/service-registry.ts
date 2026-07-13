@@ -31,6 +31,7 @@ const skillRelationEngine = new SkillRelationEngine(skillSearchEngine);
 const skillIndexDiagnostics = new SkillIndexDiagnostics(skillRelationEngine);
 const skillDecisionEngine = new SkillDecisionEngine(skillSearchEngine, skillRelationEngine);
 const skillReadPacketBuilder = new SkillReadPacketBuilder(skillRelationEngine, skillIndexDiagnostics, skillDecisionEngine);
+const skillExecutionPacketBuilder = new SkillExecutionPacketBuilder(skillReadPacketBuilder);
 const skillIndexLoader = new SkillIndexLoader(
 	skillSearchDatabase,
 	searchTokenizer,
@@ -38,7 +39,7 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillDocumentParser,
 	activeIndexStore,
 );
-const skillIndex = new SkillIndexService(skillReadPacketBuilder);
+const skillIndex = new SkillIndexService();
 
 export const SERVICE = {
 	settingsLoader,
@@ -56,7 +57,9 @@ export const SERVICE = {
 	skillIndexDiagnostics,
 	skillDecisionEngine,
 	skillReadPacketBuilder,
+	skillExecutionPacketBuilder,
 	skillIndex,
 } as const;
 import { ActiveIndexStore } from "./indexing/active-index-store";
 import { SkillDecisionEngine } from "./indexing/skill-decision-engine";
+import { SkillExecutionPacketBuilder } from "./indexing/skill-execution-packet-builder";
