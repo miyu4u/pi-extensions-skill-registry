@@ -32,10 +32,7 @@ const temporaryDirectories: string[] = [];
 let envSnapshot: EnvSnapshot = {};
 
 afterEach(async () => {
-	const service = SERVICE.skillIndex as { close?: () => void };
-	if (service.close) {
-		service.close();
-	}
+	SERVICE.skillIndexLoader.close();
 	restoreEnvironment(envSnapshot);
 	await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
 });

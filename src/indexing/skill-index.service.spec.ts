@@ -35,10 +35,7 @@ function writeSkill(
 }
 
 function closeSkillIndexService(): void {
-	const indexedService = SERVICE.skillIndex as { close?: () => void };
-	if (indexedService.close) {
-		indexedService.close();
-	}
+	SERVICE.skillIndexLoader.close();
 }
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {
@@ -85,7 +82,7 @@ describe("skill-index service", () => {
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 
 		expect(artifacts.docCount).toBe(3);
 		expect(artifacts.stats.totalParsed).toBe(3);
@@ -102,7 +99,7 @@ describe("skill-index service", () => {
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const result = SERVICE.skillIndex.resolveSkills(artifacts, ["review-guide", "typescript-developer"], false, 400, 400);
 
 		expect(result.resolved.map((entry) => entry.name)).toEqual(["review", "typescript-developer"]);
@@ -121,7 +118,7 @@ describe("skill-index service", () => {
 			relationMode: "full",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const plan = SERVICE.skillIndex.composeSkills(artifacts, ctx.query, ctx.names, ctx.limit, ctx.relationMode, ctx.minScore);
 
 		expect(plan.seeds.map((skill) => skill.canonicalName)).toEqual(["typescript-developer"]);
@@ -139,7 +136,7 @@ describe("skill-index service", () => {
 			query: "observability",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("observability");
@@ -156,7 +153,7 @@ describe("skill-index service", () => {
 			query: "observability",
 			refresh: true,
 		});
-		const exactArtifacts = await SERVICE.skillIndex.loadIndex(exact);
+		const exactArtifacts = await SERVICE.skillIndexLoader.loadIndex(exact);
 		const exactHits = SERVICE.skillIndex.searchByBm25(exactArtifacts, exact.query, exact.limit, exact.minScore);
 
 		const typo = SERVICE.skillInputNormalizer.normalizeToolInput({
@@ -166,7 +163,7 @@ describe("skill-index service", () => {
 			query: "observabilty",
 			refresh: false,
 		});
-		const typoArtifacts = await SERVICE.skillIndex.loadIndex(typo);
+		const typoArtifacts = await SERVICE.skillIndexLoader.loadIndex(typo);
 		const typoHits = SERVICE.skillIndex.searchByBm25(typoArtifacts, typo.query, typo.limit, typo.minScore);
 
 		expect(exactHits[0]?.skill.canonicalName).toBe("observability");
@@ -184,7 +181,7 @@ describe("skill-index service", () => {
 			query: "obse",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("observability");
@@ -202,7 +199,7 @@ describe("skill-index service", () => {
 			query: "alpha",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("alpha-zeta");
@@ -221,7 +218,7 @@ describe("skill-index service", () => {
 			query: "observability",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 		const top = hits[0];
 		expect(top).toBeDefined();
@@ -243,7 +240,7 @@ describe("skill-index service", () => {
 			query: "observability",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const restoredReview = artifacts.skills.find((skill) => skill.canonicalName === "review");
 		expect(restoredReview).toBeDefined();
 		expect(restoredReview?.bodyText).toContain("Canonical review body");
@@ -254,7 +251,7 @@ describe("skill-index service", () => {
 		closeSkillIndexService();
 		fs.rmSync(corpusRoot, { recursive: true, force: true });
 
-		const fromCache = await SERVICE.skillIndex.loadIndex({ ...ctx, refresh: false });
+		const fromCache = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
 		const cachedReview = fromCache.skills.find((skill) => skill.canonicalName === "review");
 		expect(fromCache.docCount).toBe(2);
 		expect(cachedReview).toBeDefined();
@@ -273,11 +270,11 @@ describe("skill-index service", () => {
 			query: "observability",
 			refresh: true,
 		});
-		const initial = await SERVICE.skillIndex.loadIndex(ctx);
+		const initial = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		expect(initial.skills.find((skill) => skill.canonicalName === "observability")?.bodyText).toContain("Original source body.");
 
 		writeSkill(root, "observability", "Rewritten source body for refresh rebuild.");
-		const rebuilt = await SERVICE.skillIndex.loadIndex({ ...ctx, refresh: true });
+		const rebuilt = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: true });
 		expect(rebuilt.skills.find((skill) => skill.canonicalName === "observability")?.bodyText).toContain(
 			"Rewritten source body for refresh rebuild.",
 		);

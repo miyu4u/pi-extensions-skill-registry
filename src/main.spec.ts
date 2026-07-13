@@ -58,10 +58,7 @@ function registerHarness(): {
 }
 
 function closeSkillIndexService(): void {
-	const indexedService = SERVICE.skillIndex as { close?: () => void };
-	if (indexedService.close) {
-		indexedService.close();
-	}
+	SERVICE.skillIndexLoader.close();
 }
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {
@@ -141,8 +138,8 @@ describe("main entrypoint integration", () => {
 		process.env.PI_CODING_AGENT_DIR = "";
 		let loadIndexCalled = false;
 		const expectedDbPath = path.join(process.env.OMP_AGENT_DIR, "cache", "skill-registry", "index.sqlite");
-		const originalLoadIndex = SERVICE.skillIndex.loadIndex;
-		SERVICE.skillIndex.loadIndex = async () => {
+		const originalLoadIndex = SERVICE.skillIndexLoader.loadIndex;
+		SERVICE.skillIndexLoader.loadIndex = async () => {
 			loadIndexCalled = true;
 			return {
 				docCount: 0,
@@ -206,7 +203,7 @@ describe("main entrypoint integration", () => {
 				expect(textFromResult(result)).toContain('query-only 확장은 taskSize:"large"에서만 허용됩니다');
 			}
 		} finally {
-			SERVICE.skillIndex.loadIndex = originalLoadIndex;
+			SERVICE.skillIndexLoader.loadIndex = originalLoadIndex;
 		}
 	});
 });

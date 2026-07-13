@@ -7,10 +7,7 @@ import { buildDiscoverResult, buildMetricsResult, buildResolveResult } from "./r
 type EnvSnapshot = NodeJS.ProcessEnv;
 
 function closeSkillIndexService(): void {
-	const indexedService = SERVICE.skillIndex as { close?: () => void };
-	if (indexedService.close) {
-		indexedService.close();
-	}
+	SERVICE.skillIndexLoader.close();
 }
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {
@@ -82,7 +79,7 @@ describe("result builder", () => {
 			query: "security review",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 		const result = buildDiscoverResult(artifacts, hits, ctx);
 
@@ -99,7 +96,7 @@ describe("result builder", () => {
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const resolved = SERVICE.skillIndex.resolveSkills(artifacts, ["review-guide"], false, 200, 200);
 		const result = buildResolveResult(artifacts, resolved);
 
@@ -115,7 +112,7 @@ describe("result builder", () => {
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const result = buildMetricsResult(artifacts);
 
 		expect(textFromResult(result)).toContain("skill_registry metrics summary");
