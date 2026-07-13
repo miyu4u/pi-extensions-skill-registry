@@ -119,7 +119,7 @@ describe("skill-index service", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const plan = SERVICE.skillIndex.composeSkills(artifacts, ctx.query, ctx.names, ctx.limit, ctx.relationMode, ctx.minScore);
+		const plan = SERVICE.skillRelationEngine.composeSkills(artifacts, ctx.query, ctx.names, ctx.limit, ctx.relationMode, ctx.minScore);
 
 		expect(plan.seeds.map((skill) => skill.canonicalName)).toEqual(["typescript-developer"]);
 		expect(plan.entries.map((entry) => entry.skill.canonicalName)).toEqual(expect.arrayContaining(["typescript-developer", "review"]));
