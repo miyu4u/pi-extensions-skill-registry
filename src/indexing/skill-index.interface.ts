@@ -1,6 +1,5 @@
 import type {
 	IndexArtifacts,
-	SearchHit,
 	SkillApplyPacketResult,
 	SkillAuditReport,
 	SkillBriefResult,
@@ -14,7 +13,6 @@ import type {
 	SkillExecutionPacketResult,
 	SkillExplainResult,
 	SkillFileReadyPacketResult,
-	SkillGapResult,
 	SkillGraphMode,
 	SkillHandoffResult,
 	SkillInstructionPacketResult,
@@ -25,10 +23,8 @@ import type {
 	SkillRecoveryPacketResult,
 	SkillRelationGraph,
 	SkillRelationMode,
-	SkillResolveResult,
 	SkillResumePacketResult,
 	SkillRouteResult,
-	SkillSearchResult,
 	SkillSessionPacketResult,
 	SkillSummaryPacketResult,
 	SkillTurnPacketResult,
@@ -43,73 +39,6 @@ import type {
  * 변환 단계별 책임을 타입 레벨에서 일관되게 고정합니다.
  */
 export interface SkillIndexInterface {
-
-	/**
-	 * BM25 점수 기반으로 1차 후보 히트를 산출합니다.
-	 * 단일 검색 단계에서 쿼리 문자열을 인덱스에 맞춘 점수 계산만 수행하고,
-	 * 상위 단계의 변환은 별도 메서드가 처리하도록 역할을 분리합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param limit 최대 반환 개수
-	 * @param minScore 통과 최소 점수 임계치
-	 * @returns 정렬된 기본 SearchHit 목록
-	 */
-	searchByBm25(index: IndexArtifacts, query: string | undefined, limit?: number, minScore?: number): SearchHit[];
-
-	/**
-	 * BM25 검색 결과에 진단 정보를 결합해 검색 상태를 진단 가능한 형태로 변환합니다.
-	 * 검색 실패나 저신뢰 결과가 나와도 왜 그렇게 되었는지 근거를 포함해
-	 * fallback/보강 로직이 다음 단계에서 의사결정을 할 수 있게 합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의
-	 * @param limit 최대 반환 개수
-	 * @param minScore 통과 최소 점수 임계치
-	 * @returns 검색 결과와 fallback diagnostics를 함께 담은 SkillSearchResult
-	 */
-	searchWithDiagnostics(index: IndexArtifacts, query: string, limit?: number, minScore?: number): SkillSearchResult;
-
-	/**
-	 * query 커버리지를 기준으로 미충족 영역과 보강이 필요한 scaffold 힌트를 계산합니다.
-	 * 검색 후보를 그대로 넘기지 않고, 실제 작업 완결성 관점에서 추가적으로 읽어야 할
-	 * 갭(skill gap)을 찾아 다음 단계 입력으로 전달합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 사용자 질의
-	 * @param names 현재까지 포함된 seed skill 이름 목록
-	 * @param coverageThreshold 갭 판정에 사용될 최소 커버리지 임계치
-	 * @param limit 최대 반환 개수
-	 * @param minScore 허용 최소 점수
-	 * @returns 갭 후보와 관련 힌트를 담은 SkillGapResult
-	 */
-	gapSkills(
-		index: IndexArtifacts,
-		query: string,
-		names: string[],
-		coverageThreshold: number,
-		limit?: number,
-		minScore?: number,
-	): SkillGapResult;
-
-	/**
-	 * 이름/별칭 기반으로 skill를 결정론적으로 resolve합니다.
-	 * 유사도 매칭이나 탐색 기반 확장 이전 단계에서 안정적인 anchor를 만들고,
-	 * includeBody 및 예산 값을 함께 반영해 반환 크기와 정밀도를 제어합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param names 후보 skill 이름 목록
-	 * @param includeBody 본문을 즉시 반환할지 여부
-	 * @param budgetChars/ tokens 패킷 구성 시 크기 예산
-	 * @returns resolve 된 skill 데이터
-	 */
-	resolveSkills(
-		index: IndexArtifacts,
-		names: string[],
-		includeBody: boolean,
-		budgetChars: number,
-		budgetTokens: number,
-	): SkillResolveResult;
 
 	/**
 	 * seed skill과 관계를 탐색해 compose 결과를 계산합니다.

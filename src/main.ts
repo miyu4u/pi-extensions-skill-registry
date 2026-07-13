@@ -75,12 +75,10 @@ function wireTools(pi: ExtensionAPI): void {
 						if (!normalized.query) {
 							return errorResult("`discover` 동작은 query가 필요합니다. (예: {action:'discover', query:'commit staging'})");
 						}
-						const searchResult = SERVICE.skillIndex.searchWithDiagnostics(
-							artifacts,
+						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(artifacts,
 							normalized.query,
 							normalized.limit,
-							normalized.minScore,
-						);
+							normalized.minScore,);
 						return buildDiscoverResult(artifacts, searchResult.hits, normalized, searchResult.diagnostics);
 					}
 					case "index":
@@ -89,19 +87,17 @@ function wireTools(pi: ExtensionAPI): void {
 						if (!normalized.query) {
 							return errorResult("`search` 동작은 query가 필요합니다. (예: {action:'search', query:'review code'})");
 						}
-						const searchResult = SERVICE.skillIndex.searchWithDiagnostics(
-							artifacts,
+						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(artifacts,
 							normalized.query,
 							normalized.limit,
-							normalized.minScore,
-						);
+							normalized.minScore,);
 						return buildSearchResult(artifacts, searchResult.hits, normalized, searchResult.diagnostics);
 					}
 					case "select": {
 						if (!normalized.query) {
 							return errorResult("`select` 동작은 query가 필요합니다. (예: {action:'select', query:'metrics', limit: 5})");
 						}
-						const hits = SERVICE.skillIndex.searchByBm25(artifacts, normalized.query, normalized.limit, normalized.minScore);
+						const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, normalized.query, normalized.limit, normalized.minScore);
 						return buildSelectResult(artifacts, hits, normalized);
 					}
 					case "compose": {
@@ -128,13 +124,11 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildResolveResult(
 							artifacts,
-							SERVICE.skillIndex.resolveSkills(
-								artifacts,
+							SERVICE.skillSearchEngine.resolveSkills(artifacts,
 								normalized.orderedNames,
 								normalized.includeBody,
 								normalized.budgetChars,
-								normalized.budgetTokens,
-							),
+								normalized.budgetTokens,),
 						);
 					}
 					case "pack": {
@@ -185,14 +179,12 @@ function wireTools(pi: ExtensionAPI): void {
 							return errorResult("`gap` 동작은 query가 필요합니다. (예: {action:'gap', query:'typescript contract review'})");
 						}
 						return buildGapResult(
-							SERVICE.skillIndex.gapSkills(
-								artifacts,
+							SERVICE.skillSearchEngine.gapSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.coverageThreshold,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "explain": {
