@@ -68,7 +68,7 @@ function wireTools(pi: ExtensionAPI): void {
 						`"${normalized.action}" query-only 확장은 taskSize:"large"에서만 허용됩니다. small/medium 작업은 discover/search/brief를 먼저 사용하거나 names를 명시하세요.`,
 					);
 				}
-				const artifacts = await SERVICE.skillIndex.loadIndex(normalized);
+				const artifacts = await SERVICE.skillIndexLoader.loadIndex(normalized);
 
 				switch (normalized.action) {
 					case "discover": {

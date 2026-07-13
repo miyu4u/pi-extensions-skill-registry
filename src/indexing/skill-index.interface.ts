@@ -35,7 +35,6 @@ import type {
 	SkillValidationReport,
 	SkillVerificationPacketResult,
 	SkillWriteScriptPacketResult,
-	ToolContext,
 } from "../shared";
 
 /**
@@ -44,23 +43,6 @@ import type {
  * 변환 단계별 책임을 타입 레벨에서 일관되게 고정합니다.
  */
 export interface SkillIndexInterface {
-
-	/**
-	 * 열린 SQLite 인덱스 핸들과 process cache를 정리해 리소스 누수를 방지합니다.
-	 * 후속 실행에서 동일 인스턴스를 재사용할 때 이전 상태가 남아 있지 않도록
-	 * 엔진을 초기 상태에 가깝게 되돌립니다.
-	 */
-	close(): void;
-
-	/**
-	 * 정규화 컨텍스트를 기준으로 인덱스 아티팩트를 로드합니다.
-	 * 현재 작업 루트와 검색 파라미터를 반영해 읽기용 index, 메타데이터, 캐시 참조를
-	 * 한 번에 구성해 다음 단계의 입력으로 전달할 수 있게 합니다.
-	 *
-	 * @param input normalizeToolInput 결과
-	 * @returns 검색과 패킷 생성 단계에서 공유할 IndexArtifacts
-	 */
-	loadIndex(input: ToolContext): Promise<IndexArtifacts>;
 
 	/**
 	 * BM25 점수 기반으로 1차 후보 히트를 산출합니다.

@@ -2,6 +2,7 @@ import { SkillDocumentParser } from "./indexing/skill-document-parser";
 import { SkillFileScanner } from "./indexing/skill-file-scanner";
 import { SkillIndexService } from "./indexing/skill-index.service";
 import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
+import { SkillIndexLoader } from "./indexing/skill-index-loader";
 import { SkillSearchDatabaseService } from "./indexing/skill-search-database.service";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
 import { SettingsLoaderService } from "./settings/settings-loader.service";
@@ -20,7 +21,15 @@ const skillSearchDatabase = createSkillSearchDatabaseService();
 const skillInputNormalizer = new SkillInputNormalizer(settingsLoader);
 const skillFileScanner = new SkillFileScanner();
 const skillDocumentParser = new SkillDocumentParser();
-const skillIndex = new SkillIndexService(skillSearchDatabase, searchTokenizer, skillFileScanner, skillDocumentParser);
+const activeIndexStore = new ActiveIndexStore();
+const skillIndexLoader = new SkillIndexLoader(
+	skillSearchDatabase,
+	searchTokenizer,
+	skillFileScanner,
+	skillDocumentParser,
+	activeIndexStore,
+);
+const skillIndex = new SkillIndexService(skillSearchDatabase, searchTokenizer, activeIndexStore);
 
 export const SERVICE = {
 	settingsLoader,
@@ -32,5 +41,7 @@ export const SERVICE = {
 	skillInputNormalizer,
 	skillFileScanner,
 	skillDocumentParser,
+	skillIndexLoader,
 	skillIndex,
 } as const;
+import { ActiveIndexStore } from "./indexing/active-index-store";
