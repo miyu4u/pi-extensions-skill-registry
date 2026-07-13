@@ -62,7 +62,7 @@ function wireTools(pi: ExtensionAPI): void {
 			_ctx: unknown,
 		): Promise<SkillRegistryToolResult> {
 			try {
-				const normalized = SERVICE.skillIndex.normalizeToolInput(params);
+				const normalized = SERVICE.skillInputNormalizer.normalizeToolInput(params);
 				if (normalized.taskSize !== "large" && normalized.names.length === 0 && LARGE_ONLY_QUERY_ACTIONS[normalized.action]) {
 					return errorResult(
 						`"${normalized.action}" query-only 확장은 taskSize:"large"에서만 허용됩니다. small/medium 작업은 discover/search/brief를 먼저 사용하거나 names를 명시하세요.`,

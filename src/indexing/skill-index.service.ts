@@ -1,7 +1,5 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import type { SettingsLoaderInterface } from "../settings";
 import type {
 	ComposedSkillEntry,
 	IndexArtifacts,
@@ -69,9 +67,7 @@ import type {
 	SkillVerificationPacketResult,
 	SkillWriteScriptPacketResult,
 	ToolContext,
-	ToolInput,
 } from "../shared";
-import { DEFAULT_FILE_NAMES } from "../shared";
 import type { SearchTokenizerInterface } from "../tokenization";
 import type { SkillIndexInterface } from "./skill-index.interface";
 import type { SkillSearchDatabaseInterface, SkillSearchDocument, SkillSearchSnapshot } from "./skill-search-database.interface";
@@ -103,12 +99,6 @@ const FALLBACK_QUERY_STOP_WORDS: Record<string, true> = {
 	value: true,
 };
 
-/** 작업 크기별 기본 추천 상한입니다. */
-const TASK_SIZE_LIMITS = {
-	small: 2,
-	medium: 5,
-} as const;
-
 /** skill-registry 인덱싱/검색 구현체입니다. */
 export class SkillIndexService implements SkillIndexInterface {
 	private cachedIndex: IndexArtifacts | null = null;
@@ -117,7 +107,6 @@ export class SkillIndexService implements SkillIndexInterface {
 
 	constructor(
 		private readonly searchDatabase: SkillSearchDatabaseInterface,
-		private readonly settingsLoader: SettingsLoaderInterface,
 		private readonly searchTokenizer: SearchTokenizerInterface,
 	) {}
 
@@ -128,49 +117,6 @@ export class SkillIndexService implements SkillIndexInterface {
 		this.searchDatabase.close();
 		this.clearActiveIndex();
 		this.cachedDatabasePath = "";
-	}
-
-	/**
-	 * tool 입력을 설정 기반으로 정규화합니다.
-	 */
-	normalizeToolInput(params: ToolInput): ToolContext {
-		const settings = this.settingsLoader.loadSettings();
-		const mergedRoots = (params.roots?.length ? params.roots : settings.roots).map((rawRoot) => this.resolvePath(rawRoot));
-		const mergedFileNames = params.fileNames?.length ? this.normalizeFileNames(params.fileNames) : settings.fileNames;
-		const taskSize = params.taskSize === "large" || params.taskSize === "small" ? params.taskSize : "medium";
-		const taskSizeLimit = taskSize === "large" ? settings.maxTopK : TASK_SIZE_LIMITS[taskSize];
-		const requestedLimit = params.limit ?? taskSizeLimit;
-		const limit = Math.max(1, Math.min(requestedLimit, settings.maxTopK, taskSizeLimit));
-
-		return {
-			action: params.action,
-			query: params.query?.trim(),
-			names: this.normalizeNames(params.names),
-			orderedNames: this.normalizeNames(params.names, true),
-			roots: mergedRoots,
-			fileNames: mergedFileNames,
-			limit,
-			taskSize,
-			refresh: params.refresh ?? false,
-			minScore: params.minScore ?? 0,
-			includeBody: params.includeBody ?? params.action !== "resolve",
-			relationMode: params.relationMode === "required" || taskSize !== "large" ? "required" : "full",
-			graphMode:
-				params.graphMode === "inbound" || params.graphMode === "cycles" || params.graphMode === "orphans"
-					? params.graphMode
-					: "outbound",
-			budgetChars: params.budgetChars ?? 4_000,
-			budgetTokens: params.budgetTokens ?? 1_000,
-			coverageThreshold: params.coverageThreshold ?? 0.7,
-			settings: {
-				...settings,
-				fileNames: mergedFileNames,
-				includePreviewBodyChars:
-					params.includePreviewBodyChars && params.includePreviewBodyChars > 0
-						? params.includePreviewBodyChars
-						: settings.includePreviewBodyChars,
-			},
-		};
 	}
 
 	/**
@@ -2749,35 +2695,6 @@ export class SkillIndexService implements SkillIndexInterface {
 				return this.buildRelationGraphSlice(index, graphMode, seeds, nodeNames, edges, resolvedEdges, orphanNames);
 			}
 		}
-	}
-
-	/**
-	 * skill 이름 입력을 정규화하고 dedupe합니다.
-	 */
-	private normalizeNames(names?: string[], preserveOrder = false): string[] {
-		if (!names || names.length === 0) {
-			return [];
-		}
-		const deduped = [...new Set(names.map((name) => this.normalizeSkillName(name)).filter(Boolean))];
-		return preserveOrder ? deduped : deduped.sort();
-	}
-
-	/**
-	 * skill 파일명 후보를 정규화하고 빈 배열이면 기본값을 돌려줍니다.
-	 */
-	private normalizeFileNames(fileNames: string[]): string[] {
-		const deduped = [...new Set(fileNames.map((name) => name.trim()).filter(Boolean))];
-		return deduped.length > 0 ? deduped : DEFAULT_FILE_NAMES;
-	}
-
-	/**
-	 * 홈 디렉터리 약칭을 실제 경로로 확장합니다.
-	 */
-	private resolvePath(raw: string): string {
-		if (!raw) {
-			return raw;
-		}
-		return raw.startsWith("~") ? path.join(os.homedir(), raw.slice(1)) : raw;
 	}
 
 	/**

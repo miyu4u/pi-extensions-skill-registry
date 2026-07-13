@@ -37,7 +37,6 @@ import type {
 	SkillVerificationPacketResult,
 	SkillWriteScriptPacketResult,
 	ToolContext,
-	ToolInput,
 } from "../shared";
 
 /**
@@ -53,16 +52,6 @@ export interface SkillIndexInterface {
 	 * 엔진을 초기 상태에 가깝게 되돌립니다.
 	 */
 	close(): void;
-
-	/**
-	 * tool 입력을 엔진 내부 처리 규칙에 맞는 정규화된 컨텍스트로 변환합니다.
-	 * 기본값 보정, 경로 해석, 제한치 정합성을 일괄 반영해 후속 단계가
-	 * 동일한 입력 규약 위에서 동작하도록 합니다.
-	 *
-	 * @param params 사용자로부터 들어온 원본 ToolInput
-	 * @returns 검색/로드 단계가 사용하는 ToolContext
-	 */
-	normalizeToolInput(params: ToolInput): ToolContext;
 
 	/**
 	 * 정규화 컨텍스트를 기준으로 인덱스 아티팩트를 로드합니다.

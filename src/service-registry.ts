@@ -1,4 +1,5 @@
 import { SkillIndexService } from "./indexing/skill-index.service";
+import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
 import { SkillSearchDatabaseService } from "./indexing/skill-search-database.service";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
 import { SettingsLoaderService } from "./settings/settings-loader.service";
@@ -14,7 +15,8 @@ const promptGuidance = new PromptGuidanceService();
 export const createSkillSearchDatabaseService = (): SkillSearchDatabaseService => new SkillSearchDatabaseService();
 
 const skillSearchDatabase = createSkillSearchDatabaseService();
-const skillIndex = new SkillIndexService(skillSearchDatabase, settingsLoader, searchTokenizer);
+const skillInputNormalizer = new SkillInputNormalizer(settingsLoader);
+const skillIndex = new SkillIndexService(skillSearchDatabase, searchTokenizer);
 
 export const SERVICE = {
 	settingsLoader,
@@ -23,5 +25,6 @@ export const SERVICE = {
 	searchTokenizer,
 	promptGuidance,
 	skillSearchDatabase,
+	skillInputNormalizer,
 	skillIndex,
 } as const;
