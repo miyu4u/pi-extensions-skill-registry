@@ -5,6 +5,7 @@ import type {
 	RawSkill,
 	SkillComposePlan,
 	SkillGraphMode,
+	SkillPackEntry,
 	SkillRelationEdgeKind,
 	SkillRelationGraph,
 	SkillRelationGraphEdge,
@@ -15,9 +16,108 @@ import { composeReasonPriority } from "./compose-reason-priority";
 import { dedupeDuplicateAliasEntries } from "./dedupe-duplicate-alias-entries";
 import type { SkillSearchEngine } from "./skill-search-engine";
 
+export interface SkillRelationProjection {
+	relationMode: SkillRelationMode;
+	seeds: string[];
+	entries: SkillPackEntry[];
+	readLayers: string[][];
+	applyLayers: string[][];
+	missing: MissingSkillRelation[];
+	cycles: string[][];
+	orphans: string[];
+	compose: SkillComposePlan;
+	graph: SkillRelationGraph;
+	diagnostics: SkillRelationGraph["diagnostics"];
+}
+
 /** compose와 relation graph 계산의 concrete owner입니다. */
 export class SkillRelationEngine {
 	constructor(private readonly searchEngine: SkillSearchEngine) {}
+
+	projectSkills(
+		index: IndexArtifacts,
+		query: string | undefined,
+		names: string[],
+		relationMode: SkillRelationMode | undefined,
+		limit = index.settings.maxTopK,
+		minScore = 0,
+	): SkillRelationProjection {
+		const compose = this.composeSkills(index, query, names, limit, relationMode, minScore);
+		const graph = this.graphSkills(index, query, names, "outbound", limit, minScore);
+		const allowedNodeNames = new Set(compose.entries.map((entry) => entry.skill.canonicalName));
+		const edges = graph.edges.filter((edge) => allowedNodeNames.has(edge.from) && (!edge.to || allowedNodeNames.has(edge.to)));
+		const resolvedEdges = edges.filter((edge): edge is SkillRelationGraphEdge & { to: string } => Boolean(edge.to));
+		const layers = this.buildRelationGraphLayers(allowedNodeNames, resolvedEdges);
+		const orphans = Array.from(allowedNodeNames)
+			.filter((nodeName) => {
+				const outbound = edges.some((edge) => edge.from === nodeName);
+				const inbound = resolvedEdges.some((edge) => edge.to === nodeName);
+				return !outbound && !inbound;
+			})
+			.sort();
+		const projectedGraph: SkillRelationGraph = {
+			...graph,
+			nodes: graph.nodes.filter((node) => allowedNodeNames.has(node.name)),
+			edges,
+			readLayers: layers.readLayers,
+			applyLayers: layers.applyLayers,
+			cycles: this.collectRelationCycles(index, resolvedEdges, allowedNodeNames),
+			orphans,
+			missing: compose.missing,
+		};
+		const composeEntryByName = new Map(compose.entries.map((entry) => [entry.skill.canonicalName, entry] as const));
+		const readLayerByName = new Map<string, number>();
+		projectedGraph.readLayers.forEach((layer, layerIndex) => {
+			for (const nodeName of layer) {
+				readLayerByName.set(nodeName, layerIndex);
+			}
+		});
+		const applyLayerByName = new Map<string, number>();
+		projectedGraph.applyLayers.forEach((layer, layerIndex) => {
+			for (const nodeName of layer) {
+				applyLayerByName.set(nodeName, layerIndex);
+			}
+		});
+		const entries = projectedGraph.nodes
+			.map((node): SkillPackEntry | null => {
+				const composeEntry = composeEntryByName.get(node.name);
+				const skill = composeEntry?.skill ?? index.skills.find((entry) => entry.canonicalName === node.name);
+				if (!skill) {
+					return null;
+				}
+				return {
+					name: skill.canonicalName,
+					path: skill.path,
+					title: skill.title,
+					category: skill.category,
+					aliases: skill.aliases,
+					requires: skill.requires,
+					recommends: skill.recommends,
+					reason: composeEntry?.reason ?? "seed",
+					via: composeEntry?.via ?? undefined,
+					depth: composeEntry?.depth ?? 0,
+					readLayer: readLayerByName.get(skill.canonicalName) ?? null,
+					applyLayer: applyLayerByName.get(skill.canonicalName) ?? null,
+					preview: skill.bodyText.slice(0, index.settings.includePreviewBodyChars).replace(/\n+/g, " "),
+					readPath: `skill://${skill.canonicalName}`,
+					omittedByBudget: false,
+				};
+			})
+			.filter((entry): entry is SkillPackEntry => entry !== null);
+		return {
+			relationMode: compose.relationMode,
+			seeds: compose.seeds.map((skill) => skill.canonicalName),
+			entries,
+			readLayers: projectedGraph.readLayers,
+			applyLayers: projectedGraph.applyLayers,
+			missing: compose.missing,
+			cycles: projectedGraph.cycles,
+			orphans: projectedGraph.orphans,
+			compose,
+			graph: projectedGraph,
+			diagnostics: projectedGraph.diagnostics,
+		};
+	}
 
 	/**
 	 * seed skill과 relation을 확장해 compose 결과를 계산합니다.

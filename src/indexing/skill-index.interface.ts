@@ -5,22 +5,16 @@ import type {
 	SkillBundleResult,
 	SkillChecklistPacketResult,
 	SkillCommandsPacketResult,
-	SkillCompareResult,
 	SkillCurrentTurnPacketResult,
-	SkillDecideResult,
 	SkillExecutionPacketResult,
-	SkillExplainResult,
 	SkillFileReadyPacketResult,
 	SkillHandoffResult,
 	SkillInstructionPacketResult,
 	SkillMarkdownPacketResult,
 	SkillPack,
-	SkillPlanResult,
-	SkillRecommendResult,
 	SkillRecoveryPacketResult,
 	SkillRelationMode,
 	SkillResumePacketResult,
-	SkillRouteResult,
 	SkillSessionPacketResult,
 	SkillSummaryPacketResult,
 	SkillTurnPacketResult,
@@ -34,81 +28,6 @@ import type {
  * 변환 단계별 책임을 타입 레벨에서 일관되게 고정합니다.
  */
 export interface SkillIndexInterface {
-
-	/**
-	 * search, compose, graph의 근거를 하나로 묶어 explain 결과로 변환합니다.
-	 * 단일 스코어 계산이 아닌, 어떤 단계에서 어떤 입력이 어떤 규칙으로 반영됐는지
-	 * 추적 가능한 설명 체인을 만들어 분석/감사용 관측 가능성을 높입니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names seed 또는 조회 대상 skill 목록
-	 * @param relationMode 관계 분석 모드
-	 * @returns 단계별 근거가 결합된 SkillExplainResult
-	 */
-	explainSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		limit?: number,
-		minScore?: number,
-	): SkillExplainResult;
-
-	/**
-	 * 쿼리 또는 seed 후보군에서 최초 read winner를 결정합니다.
-	 * 복수 후보가 존재할 때 현재 단계의 시작점을 단일 노드로 수렴시켜
-	 * plan 단계가 고정된 기준으로 진행되도록 합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param limit 결과 평가 상한
-	 * @returns 판정된 winner 정보를 담은 SkillDecideResult
-	 */
-	decideSkills(index: IndexArtifacts, query: string | undefined, names: string[], limit?: number, minScore?: number): SkillDecideResult;
-
-	/**
-	 * winner를 시작점으로 read sequence를 순차 계획합니다.
-	 * 결정된 중심 노드에서 의존성·우선순위를 반영해 다음 read 순서를 산출하며,
-	 * plan은 실제 실행 순번을 만들기 위한 중간 변환 결과입니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 확장 모드
-	 * @param limit 후보 확장 상한
-	 * @returns 순번이 할당된 SkillPlanResult
-	 */
-	planSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		limit?: number,
-		minScore?: number,
-	): SkillPlanResult;
-
-	/**
-	 * plan 단계를 layer-aware itinerary로 재배치합니다.
-	 * 같은 노드라도 실행 계층(현재/기반/후속)이 다르면 실행 가능성이 달라지므로,
-	 * handoff 전에 단계별 호출 순서를 명시적으로 분리합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 레이어링 모드
-	 * @param limit 후보 확장 상한
-	 * @returns 레이어/계층 정보가 반영된 SkillRouteResult
-	 */
-	routeSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		limit?: number,
-		minScore?: number,
-	): SkillRouteResult;
 
 	/**
 	 * route 결과를 읽기 제한 조건에 맞춰 bounded brief packet로 축약합니다.
@@ -534,41 +453,6 @@ export interface SkillIndexInterface {
 		limit?: number,
 		minScore?: number,
 	): SkillVerificationPacketResult;
-
-	/**
-	 * query 또는 seed 후보를 비교 뷰로 정규화해 side-by-side 판단 근거를 제공합니다.
-	 * 추천/선택을 자동화할 때 단일 점수 대신 대안 간 trade-off가 어떻게 다른지
-	 * 패키지 단위로 확인할 수 있게 합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param limit 비교 결과 상한
-	 * @param minScore 비교 대상 최소 점수
-	 * @returns 후보 비교 결과 SkillCompareResult
-	 */
-	compareSkills(index: IndexArtifacts, query: string | undefined, names: string[], limit?: number, minScore?: number): SkillCompareResult;
-
-	/**
-	 * query와 seed의 인접 relation을 분석해 다음 추천 스킬을 계산합니다.
-	 * 현재 선택의 연장선에서 중복 후보를 줄이고, 탐색이 필요한 갭 방향을 제안하는 후속 추천을 반환합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 후보 name 목록
-	 * @param relationMode 관계 기반 추천 모드
-	 * @param limit 최대 추천 개수
-	 * @param minScore 최소 점수 임계치
-	 * @returns 후속 추천을 담은 SkillRecommendResult
-	 */
-	recommendSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		relationMode?: SkillRelationMode,
-		limit?: number,
-		minScore?: number,
-	): SkillRecommendResult;
 
 	/**
 	 * compose, graph, validate 결과를 한 번의 snapshot pack으로 통합합니다.

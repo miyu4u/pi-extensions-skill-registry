@@ -190,14 +190,12 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildExplainResult(
-							SERVICE.skillIndex.explainSkills(
-								artifacts,
+							SERVICE.skillDecisionEngine.explainSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "decide": {
@@ -207,13 +205,11 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildDecideResult(
-							SERVICE.skillIndex.decideSkills(
-								artifacts,
+							SERVICE.skillDecisionEngine.decideSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "plan": {
@@ -223,14 +219,12 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildPlanResult(
-							SERVICE.skillIndex.planSkills(
-								artifacts,
+							SERVICE.skillDecisionEngine.planSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "route": {
@@ -240,14 +234,12 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRouteResult(
-							SERVICE.skillIndex.routeSkills(
-								artifacts,
+							SERVICE.skillDecisionEngine.routeSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "brief": {
@@ -600,13 +592,11 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCompareResult(
-							SERVICE.skillIndex.compareSkills(
-								artifacts,
+							SERVICE.skillDecisionEngine.compareSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "recommend": {
@@ -616,14 +606,12 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRecommendResult(
-							SERVICE.skillIndex.recommendSkills(
-								artifacts,
+							SERVICE.skillDecisionEngine.recommendSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.relationMode,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "audit":
