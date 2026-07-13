@@ -1,4 +1,7 @@
+import { ActiveIndexStore } from "./indexing/active-index-store";
+import { SkillDecisionEngine } from "./indexing/skill-decision-engine";
 import { SkillDocumentParser } from "./indexing/skill-document-parser";
+import { SkillExecutionPacketBuilder } from "./indexing/skill-execution-packet-builder";
 import { SkillFileScanner } from "./indexing/skill-file-scanner";
 import { SkillIndexDiagnostics } from "./indexing/skill-index-diagnostics";
 import { SkillIndexLoader } from "./indexing/skill-index-loader";
@@ -57,7 +60,3 @@ export const SERVICE = {
 	skillReadPacketBuilder,
 	skillExecutionPacketBuilder,
 } as const;
-
-import { ActiveIndexStore } from "./indexing/active-index-store";
-import { SkillDecisionEngine } from "./indexing/skill-decision-engine";
-import { SkillExecutionPacketBuilder } from "./indexing/skill-execution-packet-builder";

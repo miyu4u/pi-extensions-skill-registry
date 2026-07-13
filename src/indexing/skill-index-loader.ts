@@ -22,7 +22,7 @@ export class SkillIndexLoader {
 	close(): void {
 		this.searchDatabase.close();
 		this.activeIndexStore.clear();
-		this.activeIndexStore.cachedDatabasePath = "";
+		this.activeIndexStore.setDatabasePath("");
 	}
 
 	/**
@@ -109,7 +109,7 @@ export class SkillIndexLoader {
 			this.activeIndexStore.clear();
 		}
 		await this.searchDatabase.initialize(databasePath);
-		this.activeIndexStore.cachedDatabasePath = databasePath;
+		this.activeIndexStore.setDatabasePath(databasePath);
 
 		if (!input.refresh && this.activeIndexStore.cachedIndex && this.activeIndexStore.cachedIndex.requestKey === requestKey) {
 			const isUnexpired = now - this.activeIndexStore.cachedIndex.generatedAt < this.activeIndexStore.cachedIndex.ttlMs;
