@@ -3,6 +3,7 @@ import { SkillFileScanner } from "./indexing/skill-file-scanner";
 import { SkillIndexService } from "./indexing/skill-index.service";
 import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
 import { SkillIndexLoader } from "./indexing/skill-index-loader";
+import { SkillRelationEngine } from "./indexing/skill-relation-engine";
 import { SkillSearchEngine } from "./indexing/skill-search-engine";
 import { SkillSearchDatabaseService } from "./indexing/skill-search-database.service";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
@@ -24,6 +25,7 @@ const skillFileScanner = new SkillFileScanner();
 const skillDocumentParser = new SkillDocumentParser();
 const activeIndexStore = new ActiveIndexStore();
 const skillSearchEngine = new SkillSearchEngine(skillSearchDatabase, searchTokenizer, activeIndexStore);
+const skillRelationEngine = new SkillRelationEngine(skillSearchEngine);
 const skillIndexLoader = new SkillIndexLoader(
 	skillSearchDatabase,
 	searchTokenizer,
@@ -31,7 +33,7 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillDocumentParser,
 	activeIndexStore,
 );
-const skillIndex = new SkillIndexService(skillSearchEngine);
+const skillIndex = new SkillIndexService(skillSearchEngine, skillRelationEngine);
 
 export const SERVICE = {
 	settingsLoader,
@@ -45,6 +47,7 @@ export const SERVICE = {
 	skillDocumentParser,
 	skillIndexLoader,
 	skillSearchEngine,
+	skillRelationEngine,
 	skillIndex,
 } as const;
 import { ActiveIndexStore } from "./indexing/active-index-store";

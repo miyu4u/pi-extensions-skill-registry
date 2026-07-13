@@ -106,14 +106,12 @@ function wireTools(pi: ExtensionAPI): void {
 								"`compose` 동작은 query 또는 names가 필요합니다. (예: {action:'compose', query:'typescript feature', relationMode:'full'})",
 							);
 						}
-						const plan = SERVICE.skillIndex.composeSkills(
-							artifacts,
+						const plan = SERVICE.skillRelationEngine.composeSkills(artifacts,
 							normalized.query,
 							normalized.names,
 							normalized.limit,
 							normalized.relationMode,
-							normalized.minScore,
-						);
+							normalized.minScore,);
 						return buildComposeResult(artifacts, plan, normalized);
 					}
 					case "resolve": {
@@ -164,14 +162,12 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildGraphResult(
 							artifacts,
-							SERVICE.skillIndex.graphSkills(
-								artifacts,
+							SERVICE.skillRelationEngine.graphSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.graphMode,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					}
 					case "gap": {

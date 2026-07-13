@@ -7,13 +7,11 @@ import type {
 	SkillChecklistPacketResult,
 	SkillCommandsPacketResult,
 	SkillCompareResult,
-	SkillComposePlan,
 	SkillCurrentTurnPacketResult,
 	SkillDecideResult,
 	SkillExecutionPacketResult,
 	SkillExplainResult,
 	SkillFileReadyPacketResult,
-	SkillGraphMode,
 	SkillHandoffResult,
 	SkillInstructionPacketResult,
 	SkillMarkdownPacketResult,
@@ -21,7 +19,6 @@ import type {
 	SkillPlanResult,
 	SkillRecommendResult,
 	SkillRecoveryPacketResult,
-	SkillRelationGraph,
 	SkillRelationMode,
 	SkillResumePacketResult,
 	SkillRouteResult,
@@ -39,26 +36,6 @@ import type {
  * 변환 단계별 책임을 타입 레벨에서 일관되게 고정합니다.
  */
 export interface SkillIndexInterface {
-
-	/**
-	 * seed skill과 관계를 탐색해 compose 결과를 계산합니다.
-	 * 검색/resolve 단계에서 정돈된 후보를 기반으로 graph 기반 인접 노드를 확장해
-	 * 다음 단계에 넣을 실행 가능 플랜으로 조합합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names seed 또는 초기 후보 name 목록
-	 * @param relationMode 관계 확장 전략
-	 * @returns relation 확장 결과인 SkillComposePlan
-	 */
-	composeSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		limit?: number,
-		relationMode?: SkillRelationMode,
-		minScore?: number,
-	): SkillComposePlan;
 
 	/**
 	 * search, compose, graph의 근거를 하나로 묶어 explain 결과로 변환합니다.
@@ -642,25 +619,5 @@ export interface SkillIndexInterface {
 	 */
 	auditSkills(index: IndexArtifacts, query: string | undefined, names: string[], limit?: number, minScore?: number): SkillAuditReport;
 
-	/**
-	 * canonical index 기준으로 relation graph의 특정 slice를 추출합니다.
-	 * 전체 그래프를 재구성하지 않고 query/names 주변의 필요한 이웃과 연결을
-	 * graphMode별로 제한해 관계 탐색 비용을 최소화합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names seed 또는 후보 skill 목록
-	 * @param graphMode 그래프 추출 모드
-	 * @param limit 반환할 node 수 상한
-	 * @param minScore 최소 관계 점수
-	 * @returns 관계 구조 슬라이스인 SkillRelationGraph
-	 */
-	graphSkills(
-		index: IndexArtifacts,
-		query: string | undefined,
-		names: string[],
-		graphMode?: SkillGraphMode,
-		limit?: number,
-		minScore?: number,
-	): SkillRelationGraph;
+
 }
