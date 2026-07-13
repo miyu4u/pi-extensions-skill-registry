@@ -80,7 +80,7 @@ describe("result builder", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 		const result = buildDiscoverResult(artifacts, hits, ctx);
 
 		expect(textFromResult(result)).toContain("skill://alpha");
@@ -97,7 +97,7 @@ describe("result builder", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const resolved = SERVICE.skillIndex.resolveSkills(artifacts, ["review-guide"], false, 200, 200);
+		const resolved = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["review-guide"], false, 200, 200);
 		const result = buildResolveResult(artifacts, resolved);
 
 		expect(textFromResult(result)).toContain("review");

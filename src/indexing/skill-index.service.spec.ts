@@ -100,7 +100,7 @@ describe("skill-index service", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const result = SERVICE.skillIndex.resolveSkills(artifacts, ["review-guide", "typescript-developer"], false, 400, 400);
+		const result = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["review-guide", "typescript-developer"], false, 400, 400);
 
 		expect(result.resolved.map((entry) => entry.name)).toEqual(["review", "typescript-developer"]);
 		expect(result.missing).toEqual([]);
@@ -137,7 +137,7 @@ describe("skill-index service", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("observability");
 		expect(hits[0]?.score).toBeGreaterThan(0);
@@ -154,7 +154,7 @@ describe("skill-index service", () => {
 			refresh: true,
 		});
 		const exactArtifacts = await SERVICE.skillIndexLoader.loadIndex(exact);
-		const exactHits = SERVICE.skillIndex.searchByBm25(exactArtifacts, exact.query, exact.limit, exact.minScore);
+		const exactHits = SERVICE.skillSearchEngine.searchByBm25(exactArtifacts, exact.query, exact.limit, exact.minScore);
 
 		const typo = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
@@ -164,7 +164,7 @@ describe("skill-index service", () => {
 			refresh: false,
 		});
 		const typoArtifacts = await SERVICE.skillIndexLoader.loadIndex(typo);
-		const typoHits = SERVICE.skillIndex.searchByBm25(typoArtifacts, typo.query, typo.limit, typo.minScore);
+		const typoHits = SERVICE.skillSearchEngine.searchByBm25(typoArtifacts, typo.query, typo.limit, typo.minScore);
 
 		expect(exactHits[0]?.skill.canonicalName).toBe("observability");
 		expect(typoHits[0]?.skill.canonicalName).toBe("observability");
@@ -182,7 +182,7 @@ describe("skill-index service", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("observability");
 		expect(hits[0]?.score).toBeGreaterThan(0);
@@ -200,7 +200,7 @@ describe("skill-index service", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("alpha-zeta");
 		expect(hits[1]?.skill.canonicalName).toBe("zeta-alpha");
@@ -219,12 +219,12 @@ describe("skill-index service", () => {
 			refresh: true,
 		});
 		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 		const top = hits[0];
 		expect(top).toBeDefined();
 		expect(top?.score).toBeGreaterThan(0);
 
-		const filtered = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, (top?.score ?? 0) + 0.0001);
+		const filtered = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, (top?.score ?? 0) + 0.0001);
 		expect(filtered).toHaveLength(0);
 	});
 
