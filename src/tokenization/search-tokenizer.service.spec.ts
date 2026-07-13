@@ -16,7 +16,7 @@ function writeSkill(root: string, name: string, body: string, keywords = "review
 	);
 }
 
-function closeSkillIndexService(): void {
+function closeSkillIndex(): void {
 	SERVICE.skillIndexLoader.close();
 }
 
@@ -46,7 +46,7 @@ describe("search tokenizer service", () => {
 	});
 
 	afterEach(() => {
-		closeSkillIndexService();
+		closeSkillIndex();
 		restoreEnvironment(envSnapshot);
 		if (root) {
 			fs.rmSync(root, { recursive: true, force: true });

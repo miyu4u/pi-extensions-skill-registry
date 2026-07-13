@@ -57,7 +57,7 @@ function registerHarness(): {
 	return { tools, beforeAgentStart };
 }
 
-function closeSkillIndexService(): void {
+function closeSkillIndex(): void {
 	SERVICE.skillIndexLoader.close();
 }
 
@@ -78,7 +78,7 @@ describe("main entrypoint integration", () => {
 	let envSnapshot: EnvSnapshot = {};
 
 	afterEach(() => {
-		closeSkillIndexService();
+		closeSkillIndex();
 		restoreEnvironment(envSnapshot);
 		if (root) {
 			fs.rmSync(root, { recursive: true, force: true });

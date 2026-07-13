@@ -34,7 +34,7 @@ function writeSkill(
 	);
 }
 
-function closeSkillIndexService(): void {
+function closeSkillIndex(): void {
 	SERVICE.skillIndexLoader.close();
 }
 
@@ -68,7 +68,7 @@ describe("skill-index service", () => {
 	});
 
 	afterEach(() => {
-		closeSkillIndexService();
+		closeSkillIndex();
 		restoreEnvironment(envSnapshot);
 		fs.rmSync(root, { recursive: true, force: true });
 		root = "";
@@ -248,7 +248,7 @@ describe("skill-index service", () => {
 		expect(restoredReview?.aliases).toEqual(["review-skill"]);
 		expect(artifacts.docCount).toBe(2);
 
-		closeSkillIndexService();
+		closeSkillIndex();
 		fs.rmSync(corpusRoot, { recursive: true, force: true });
 
 		const fromCache = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });

@@ -6,7 +6,7 @@ import { buildDiscoverResult, buildMetricsResult, buildResolveResult } from "./r
 
 type EnvSnapshot = NodeJS.ProcessEnv;
 
-function closeSkillIndexService(): void {
+function closeSkillIndex(): void {
 	SERVICE.skillIndexLoader.close();
 }
 
@@ -65,7 +65,7 @@ describe("result builder", () => {
 	});
 
 	afterEach(() => {
-		closeSkillIndexService();
+		closeSkillIndex();
 		restoreEnvironment(envSnapshot);
 		fs.rmSync(root, { recursive: true, force: true });
 	});

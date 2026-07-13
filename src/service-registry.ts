@@ -1,6 +1,5 @@
 import { SkillDocumentParser } from "./indexing/skill-document-parser";
 import { SkillFileScanner } from "./indexing/skill-file-scanner";
-import { SkillIndexService } from "./indexing/skill-index.service";
 import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
 import { SkillIndexDiagnostics } from "./indexing/skill-index-diagnostics";
 import { SkillIndexLoader } from "./indexing/skill-index-loader";
@@ -39,7 +38,6 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillDocumentParser,
 	activeIndexStore,
 );
-const skillIndex = new SkillIndexService();
 
 export const SERVICE = {
 	settingsLoader,
@@ -58,7 +56,6 @@ export const SERVICE = {
 	skillDecisionEngine,
 	skillReadPacketBuilder,
 	skillExecutionPacketBuilder,
-	skillIndex,
 } as const;
 import { ActiveIndexStore } from "./indexing/active-index-store";
 import { SkillDecisionEngine } from "./indexing/skill-decision-engine";
