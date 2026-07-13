@@ -629,16 +629,14 @@ function wireTools(pi: ExtensionAPI): void {
 					case "audit":
 						return buildAuditResult(
 							artifacts,
-							SERVICE.skillIndex.auditSkills(
-								artifacts,
+							SERVICE.skillIndexDiagnostics.auditSkills(artifacts,
 								normalized.query,
 								normalized.names,
 								normalized.limit,
-								normalized.minScore,
-							),
+								normalized.minScore,),
 						);
 					case "validate":
-						return buildValidateResult(artifacts, SERVICE.skillIndex.validateIndex(artifacts));
+						return buildValidateResult(artifacts, SERVICE.skillIndexDiagnostics.validateIndex(artifacts));
 					case "metrics":
 						return buildMetricsResult(artifacts);
 					default:

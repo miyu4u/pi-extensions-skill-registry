@@ -1,7 +1,6 @@
 import type {
 	IndexArtifacts,
 	SkillApplyPacketResult,
-	SkillAuditReport,
 	SkillBriefResult,
 	SkillBundleResult,
 	SkillChecklistPacketResult,
@@ -25,7 +24,6 @@ import type {
 	SkillSessionPacketResult,
 	SkillSummaryPacketResult,
 	SkillTurnPacketResult,
-	SkillValidationReport,
 	SkillVerificationPacketResult,
 	SkillWriteScriptPacketResult,
 } from "../shared";
@@ -597,27 +595,6 @@ export interface SkillIndexInterface {
 		limit?: number,
 		minScore?: number,
 	): SkillPack;
-
-	/**
-	 * 인덱스 자체의 정합성을 검사해 index-level validation issue를 계산합니다.
-	 * 인덱스 항목, 메타 레코드, 참조 링크의 일관성 문제를 찾아
-	 * 검색/패킷 변환 품질 저하를 예방하기 위한 진단 보고서를 반환합니다.
-	 */
-	validateIndex(index: IndexArtifacts): SkillValidationReport;
-
-	/**
-	 * query 또는 names 기반으로 corpus의 건강 상태를 audit합니다.
-	 * 빈약한 노출, 고립 노드, 관계 손실 등 운영 관점의 품질 저하를 진단해
-	 * 유지보수 우선순위가 되는 지표를 도출합니다.
-	 *
-	 * @param index 로드된 인덱스 아티팩트
-	 * @param query 검색 질의(선택)
-	 * @param names 대상 name 목록
-	 * @param limit 반환 항목 상한
-	 * @param minScore 최소 점수 필터
-	 * @returns Health 지표 집약 객체 SkillAuditReport
-	 */
-	auditSkills(index: IndexArtifacts, query: string | undefined, names: string[], limit?: number, minScore?: number): SkillAuditReport;
 
 
 }

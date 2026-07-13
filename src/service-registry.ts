@@ -2,6 +2,7 @@ import { SkillDocumentParser } from "./indexing/skill-document-parser";
 import { SkillFileScanner } from "./indexing/skill-file-scanner";
 import { SkillIndexService } from "./indexing/skill-index.service";
 import { SkillInputNormalizer } from "./indexing/skill-input-normalizer";
+import { SkillIndexDiagnostics } from "./indexing/skill-index-diagnostics";
 import { SkillIndexLoader } from "./indexing/skill-index-loader";
 import { SkillRelationEngine } from "./indexing/skill-relation-engine";
 import { SkillSearchEngine } from "./indexing/skill-search-engine";
@@ -26,6 +27,7 @@ const skillDocumentParser = new SkillDocumentParser();
 const activeIndexStore = new ActiveIndexStore();
 const skillSearchEngine = new SkillSearchEngine(skillSearchDatabase, searchTokenizer, activeIndexStore);
 const skillRelationEngine = new SkillRelationEngine(skillSearchEngine);
+const skillIndexDiagnostics = new SkillIndexDiagnostics(skillRelationEngine);
 const skillIndexLoader = new SkillIndexLoader(
 	skillSearchDatabase,
 	searchTokenizer,
@@ -33,7 +35,7 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillDocumentParser,
 	activeIndexStore,
 );
-const skillIndex = new SkillIndexService(skillSearchEngine, skillRelationEngine);
+const skillIndex = new SkillIndexService(skillSearchEngine, skillRelationEngine, skillIndexDiagnostics);
 
 export const SERVICE = {
 	settingsLoader,
@@ -48,6 +50,7 @@ export const SERVICE = {
 	skillIndexLoader,
 	skillSearchEngine,
 	skillRelationEngine,
+	skillIndexDiagnostics,
 	skillIndex,
 } as const;
 import { ActiveIndexStore } from "./indexing/active-index-store";
