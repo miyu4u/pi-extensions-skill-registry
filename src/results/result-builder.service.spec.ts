@@ -6,11 +6,8 @@ import { buildDiscoverResult, buildMetricsResult, buildResolveResult } from "./r
 
 type EnvSnapshot = NodeJS.ProcessEnv;
 
-function closeSkillIndexService(): void {
-	const indexedService = SERVICE.skillIndex as { close?: () => void };
-	if (indexedService.close) {
-		indexedService.close();
-	}
+function closeSkillIndex(): void {
+	SERVICE.skillIndexLoader.close();
 }
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {
@@ -68,22 +65,22 @@ describe("result builder", () => {
 	});
 
 	afterEach(() => {
-		closeSkillIndexService();
+		closeSkillIndex();
 		restoreEnvironment(envSnapshot);
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 
 	/** discover builder가 ranked hit를 text/details payload로 직렬화하는지 검증합니다. */
 	test("builds discover payloads from ranked hits", async () => {
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "discover",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "security review",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 		const result = buildDiscoverResult(artifacts, hits, ctx);
 
 		expect(textFromResult(result)).toContain("skill://alpha");
@@ -93,14 +90,14 @@ describe("result builder", () => {
 	/** resolve builder가 exact resolve 결과를 request order와 함께 직렬화하는지 검증합니다. */
 	test("builds resolve payloads from exact resolve results", async () => {
 		writeSkill(root, "review", "Review guide body.", "review-guide");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "resolve",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const resolved = SERVICE.skillIndex.resolveSkills(artifacts, ["review-guide"], false, 200, 200);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const resolved = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["review-guide"], false, 200, 200);
 		const result = buildResolveResult(artifacts, resolved);
 
 		expect(textFromResult(result)).toContain("review");
@@ -109,13 +106,13 @@ describe("result builder", () => {
 
 	/** metrics builder가 corpus summary를 text/details로 노출하는지 검증합니다. */
 	test("builds metrics summary payloads", async () => {
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "metrics",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const result = buildMetricsResult(artifacts);
 
 		expect(textFromResult(result)).toContain("skill_registry metrics summary");

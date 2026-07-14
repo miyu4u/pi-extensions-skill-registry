@@ -62,20 +62,20 @@ function wireTools(pi: ExtensionAPI): void {
 			_ctx: unknown,
 		): Promise<SkillRegistryToolResult> {
 			try {
-				const normalized = SERVICE.skillIndex.normalizeToolInput(params);
+				const normalized = SERVICE.skillInputNormalizer.normalizeToolInput(params);
 				if (normalized.taskSize !== "large" && normalized.names.length === 0 && LARGE_ONLY_QUERY_ACTIONS[normalized.action]) {
 					return errorResult(
 						`"${normalized.action}" query-only 확장은 taskSize:"large"에서만 허용됩니다. small/medium 작업은 discover/search/brief를 먼저 사용하거나 names를 명시하세요.`,
 					);
 				}
-				const artifacts = await SERVICE.skillIndex.loadIndex(normalized);
+				const artifacts = await SERVICE.skillIndexLoader.loadIndex(normalized);
 
 				switch (normalized.action) {
 					case "discover": {
 						if (!normalized.query) {
 							return errorResult("`discover` 동작은 query가 필요합니다. (예: {action:'discover', query:'commit staging'})");
 						}
-						const searchResult = SERVICE.skillIndex.searchWithDiagnostics(
+						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(
 							artifacts,
 							normalized.query,
 							normalized.limit,
@@ -89,7 +89,7 @@ function wireTools(pi: ExtensionAPI): void {
 						if (!normalized.query) {
 							return errorResult("`search` 동작은 query가 필요합니다. (예: {action:'search', query:'review code'})");
 						}
-						const searchResult = SERVICE.skillIndex.searchWithDiagnostics(
+						const searchResult = SERVICE.skillSearchEngine.searchWithDiagnostics(
 							artifacts,
 							normalized.query,
 							normalized.limit,
@@ -101,7 +101,12 @@ function wireTools(pi: ExtensionAPI): void {
 						if (!normalized.query) {
 							return errorResult("`select` 동작은 query가 필요합니다. (예: {action:'select', query:'metrics', limit: 5})");
 						}
-						const hits = SERVICE.skillIndex.searchByBm25(artifacts, normalized.query, normalized.limit, normalized.minScore);
+						const hits = SERVICE.skillSearchEngine.searchByBm25(
+							artifacts,
+							normalized.query,
+							normalized.limit,
+							normalized.minScore,
+						);
 						return buildSelectResult(artifacts, hits, normalized);
 					}
 					case "compose": {
@@ -110,7 +115,7 @@ function wireTools(pi: ExtensionAPI): void {
 								"`compose` 동작은 query 또는 names가 필요합니다. (예: {action:'compose', query:'typescript feature', relationMode:'full'})",
 							);
 						}
-						const plan = SERVICE.skillIndex.composeSkills(
+						const plan = SERVICE.skillRelationEngine.composeSkills(
 							artifacts,
 							normalized.query,
 							normalized.names,
@@ -128,7 +133,7 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildResolveResult(
 							artifacts,
-							SERVICE.skillIndex.resolveSkills(
+							SERVICE.skillSearchEngine.resolveSkills(
 								artifacts,
 								normalized.orderedNames,
 								normalized.includeBody,
@@ -145,7 +150,7 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildPackResult(
 							artifacts,
-							SERVICE.skillIndex.packSkills(
+							SERVICE.skillReadPacketBuilder.packSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -170,7 +175,7 @@ function wireTools(pi: ExtensionAPI): void {
 						}
 						return buildGraphResult(
 							artifacts,
-							SERVICE.skillIndex.graphSkills(
+							SERVICE.skillRelationEngine.graphSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -185,7 +190,7 @@ function wireTools(pi: ExtensionAPI): void {
 							return errorResult("`gap` 동작은 query가 필요합니다. (예: {action:'gap', query:'typescript contract review'})");
 						}
 						return buildGapResult(
-							SERVICE.skillIndex.gapSkills(
+							SERVICE.skillSearchEngine.gapSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -202,7 +207,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildExplainResult(
-							SERVICE.skillIndex.explainSkills(
+							SERVICE.skillDecisionEngine.explainSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -219,7 +224,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildDecideResult(
-							SERVICE.skillIndex.decideSkills(
+							SERVICE.skillDecisionEngine.decideSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -235,7 +240,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildPlanResult(
-							SERVICE.skillIndex.planSkills(
+							SERVICE.skillDecisionEngine.planSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -252,7 +257,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRouteResult(
-							SERVICE.skillIndex.routeSkills(
+							SERVICE.skillDecisionEngine.routeSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -269,7 +274,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildBriefResult(
-							SERVICE.skillIndex.briefSkills(
+							SERVICE.skillReadPacketBuilder.briefSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -289,7 +294,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildBundleResult(
-							SERVICE.skillIndex.bundleSkills(
+							SERVICE.skillReadPacketBuilder.bundleSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -308,7 +313,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildHandoffResult(
-							SERVICE.skillIndex.handoffSkills(
+							SERVICE.skillReadPacketBuilder.handoffSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -327,7 +332,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildSessionPacketResult(
-							SERVICE.skillIndex.sessionPacketSkills(
+							SERVICE.skillReadPacketBuilder.sessionPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -346,7 +351,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildTurnPacketResult(
-							SERVICE.skillIndex.turnPacketSkills(
+							SERVICE.skillReadPacketBuilder.turnPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -365,7 +370,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRecoveryPacketResult(
-							SERVICE.skillIndex.recoveryPacketSkills(
+							SERVICE.skillReadPacketBuilder.recoveryPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -384,7 +389,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildResumePacketResult(
-							SERVICE.skillIndex.resumePacketSkills(
+							SERVICE.skillReadPacketBuilder.resumePacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -403,7 +408,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCurrentTurnPacketResult(
-							SERVICE.skillIndex.currentTurnPacketSkills(
+							SERVICE.skillReadPacketBuilder.currentTurnPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -422,7 +427,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildInstructionPacketResult(
-							SERVICE.skillIndex.instructionPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.instructionPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -441,7 +446,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildSummaryPacketResult(
-							SERVICE.skillIndex.summaryPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.summaryPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -460,7 +465,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildMarkdownPacketResult(
-							SERVICE.skillIndex.markdownPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.markdownPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -479,7 +484,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildChecklistPacketResult(
-							SERVICE.skillIndex.checklistPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.checklistPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -498,7 +503,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCommandsPacketResult(
-							SERVICE.skillIndex.commandsPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.commandsPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -517,7 +522,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildFileReadyPacketResult(
-							SERVICE.skillIndex.fileReadyPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.fileReadyPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -536,7 +541,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildApplyPacketResult(
-							SERVICE.skillIndex.applyPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.applyPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -555,7 +560,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildWriteScriptPacketResult(
-							SERVICE.skillIndex.writeScriptPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.writeScriptPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -574,7 +579,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildExecutionPacketResult(
-							SERVICE.skillIndex.executionPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.executionPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -593,7 +598,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildVerificationPacketResult(
-							SERVICE.skillIndex.verificationPacketSkills(
+							SERVICE.skillExecutionPacketBuilder.verificationPacketSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -612,7 +617,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildCompareResult(
-							SERVICE.skillIndex.compareSkills(
+							SERVICE.skillDecisionEngine.compareSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -628,7 +633,7 @@ function wireTools(pi: ExtensionAPI): void {
 							);
 						}
 						return buildRecommendResult(
-							SERVICE.skillIndex.recommendSkills(
+							SERVICE.skillDecisionEngine.recommendSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -641,7 +646,7 @@ function wireTools(pi: ExtensionAPI): void {
 					case "audit":
 						return buildAuditResult(
 							artifacts,
-							SERVICE.skillIndex.auditSkills(
+							SERVICE.skillIndexDiagnostics.auditSkills(
 								artifacts,
 								normalized.query,
 								normalized.names,
@@ -650,7 +655,7 @@ function wireTools(pi: ExtensionAPI): void {
 							),
 						);
 					case "validate":
-						return buildValidateResult(artifacts, SERVICE.skillIndex.validateIndex(artifacts));
+						return buildValidateResult(artifacts, SERVICE.skillIndexDiagnostics.validateIndex(artifacts));
 					case "metrics":
 						return buildMetricsResult(artifacts);
 					default:

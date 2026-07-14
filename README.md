@@ -64,8 +64,9 @@
         +------------------+
 ```
 
-- `src/schema.ts`는 `skill_registry` tool input schema의 single source of truth입니다.
-- `src/indexing/skill-index.service.ts`는 corpus policy, query variant aggregation, relation traversal, packet planning을 중앙화하고, `skill-search-database.service.ts`는 SQLite schema, snapshot persistence, vocabulary, FTS5 BM25 query를 소유합니다.
+`src/schema.ts`는 `skill_registry` tool input schema의 single source of truth입니다.
+- `src/service-registry.ts`가 모든 indexing, tokenization, prompt, settings service를 생성해 `SERVICE` 상수로 노출하는 composition root로서 concrete `new` 호출과 의존성 wiring을 단일 지점에서 소유하며, indexing service는 `./indexing` barrel 단일 import로 주입됩니다.
+- `src/indexing/`의 capability는 concrete service가 각각 소유합니다: `skill-input-normalizer`가 실행 컨텍스트 정규화, `skill-file-scanner`가 filesystem 수집, `skill-document-parser`가 markdown 파싱, `active-index-store`가 활성 index identity, `skill-index-loader`가 index 생성과 snapshot lifecycle, `skill-search-engine`이 검색·exact resolve·zero-result fallback, `skill-relation-engine`이 relation expansion, `skill-decision-engine`이 decide/plan/route 결정, `skill-index-diagnostics`가 validation·audit, `skill-read-packet-builder`와 `skill-execution-packet-builder`가 packet projection을 담당하고, `skill-search-database.service.ts`가 SQLite schema, snapshot persistence, vocabulary, FTS5 BM25 query를 소유합니다.
 - `src/tokenization/`은 query와 document 모두에 같은 tokenization 규칙을 적용합니다.
 - `src/settings/`, `src/results/`, `src/prompt/`은 각각 configuration, response serialization, prompt-slimming hook을 담당합니다.
 

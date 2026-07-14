@@ -1,5 +1,17 @@
-import { SkillIndexService } from "./indexing/skill-index.service";
-import { SkillSearchDatabaseService } from "./indexing/skill-search-database.service";
+import {
+	ActiveIndexStore,
+	SkillDecisionEngine,
+	SkillDocumentParser,
+	SkillExecutionPacketBuilder,
+	SkillFileScanner,
+	SkillIndexDiagnostics,
+	SkillIndexLoader,
+	SkillInputNormalizer,
+	SkillReadPacketBuilder,
+	SkillRelationEngine,
+	SkillSearchDatabaseService,
+	SkillSearchEngine,
+} from "./indexing";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
 import { SettingsLoaderService } from "./settings/settings-loader.service";
 import { EnglishFuzzyMatcherService } from "./tokenization/english-fuzzy-matcher.service";
@@ -14,7 +26,23 @@ const promptGuidance = new PromptGuidanceService();
 export const createSkillSearchDatabaseService = (): SkillSearchDatabaseService => new SkillSearchDatabaseService();
 
 const skillSearchDatabase = createSkillSearchDatabaseService();
-const skillIndex = new SkillIndexService(skillSearchDatabase, settingsLoader, searchTokenizer);
+const skillInputNormalizer = new SkillInputNormalizer(settingsLoader);
+const skillFileScanner = new SkillFileScanner();
+const skillDocumentParser = new SkillDocumentParser();
+const activeIndexStore = new ActiveIndexStore();
+const skillSearchEngine = new SkillSearchEngine(skillSearchDatabase, searchTokenizer, activeIndexStore);
+const skillRelationEngine = new SkillRelationEngine(skillSearchEngine);
+const skillIndexDiagnostics = new SkillIndexDiagnostics(skillRelationEngine);
+const skillDecisionEngine = new SkillDecisionEngine(skillSearchEngine, skillRelationEngine);
+const skillReadPacketBuilder = new SkillReadPacketBuilder(skillRelationEngine, skillIndexDiagnostics, skillDecisionEngine);
+const skillExecutionPacketBuilder = new SkillExecutionPacketBuilder(skillReadPacketBuilder);
+const skillIndexLoader = new SkillIndexLoader(
+	skillSearchDatabase,
+	searchTokenizer,
+	skillFileScanner,
+	skillDocumentParser,
+	activeIndexStore,
+);
 
 export const SERVICE = {
 	settingsLoader,
@@ -23,5 +51,14 @@ export const SERVICE = {
 	searchTokenizer,
 	promptGuidance,
 	skillSearchDatabase,
-	skillIndex,
+	skillInputNormalizer,
+	skillFileScanner,
+	skillDocumentParser,
+	skillIndexLoader,
+	skillSearchEngine,
+	skillRelationEngine,
+	skillIndexDiagnostics,
+	skillDecisionEngine,
+	skillReadPacketBuilder,
+	skillExecutionPacketBuilder,
 } as const;

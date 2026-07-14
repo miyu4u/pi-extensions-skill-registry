@@ -34,11 +34,8 @@ function writeSkill(
 	);
 }
 
-function closeSkillIndexService(): void {
-	const indexedService = SERVICE.skillIndex as { close?: () => void };
-	if (indexedService.close) {
-		indexedService.close();
-	}
+function closeSkillIndex(): void {
+	SERVICE.skillIndexLoader.close();
 }
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {
@@ -71,7 +68,7 @@ describe("skill-index service", () => {
 	});
 
 	afterEach(() => {
-		closeSkillIndexService();
+		closeSkillIndex();
 		restoreEnvironment(envSnapshot);
 		fs.rmSync(root, { recursive: true, force: true });
 		root = "";
@@ -79,13 +76,13 @@ describe("skill-index service", () => {
 
 	/** 인덱스가 문서 수와 통계를 계산하는지 검증합니다. */
 	test("indexes all skills and computes doc and file stats", async () => {
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "index",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 
 		expect(artifacts.docCount).toBe(3);
 		expect(artifacts.stats.totalParsed).toBe(3);
@@ -96,14 +93,14 @@ describe("skill-index service", () => {
 	test("resolves exact names and aliases in request order", async () => {
 		writeSkill(root, "review", "Review guide body.", { aliases: "review-guide" });
 		writeSkill(root, "typescript-developer", "TypeScript guide body.", { aliases: "tsdev" });
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "resolve",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const result = SERVICE.skillIndex.resolveSkills(artifacts, ["review-guide", "typescript-developer"], false, 400, 400);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const result = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["review-guide", "typescript-developer"], false, 400, 400);
 
 		expect(result.resolved.map((entry) => entry.name)).toEqual(["review", "typescript-developer"]);
 		expect(result.missing).toEqual([]);
@@ -113,7 +110,7 @@ describe("skill-index service", () => {
 	test("expands compose relations from alias seeds", async () => {
 		writeSkill(root, "review", "Review guide body.", { aliases: "review-guide" });
 		writeSkill(root, "typescript-developer", "TypeScript guide body.", { aliases: "tsdev", requires: "review-guide" });
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "compose",
 			roots: [root],
 			fileNames: ["SKILL.md"],
@@ -121,8 +118,8 @@ describe("skill-index service", () => {
 			relationMode: "full",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const plan = SERVICE.skillIndex.composeSkills(artifacts, ctx.query, ctx.names, ctx.limit, ctx.relationMode, ctx.minScore);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const plan = SERVICE.skillRelationEngine.composeSkills(artifacts, ctx.query, ctx.names, ctx.limit, ctx.relationMode, ctx.minScore);
 
 		expect(plan.seeds.map((skill) => skill.canonicalName)).toEqual(["typescript-developer"]);
 		expect(plan.entries.map((entry) => entry.skill.canonicalName)).toEqual(expect.arrayContaining(["typescript-developer", "review"]));
@@ -132,15 +129,15 @@ describe("skill-index service", () => {
 	test("returns canonical title match first", async () => {
 		writeSkill(root, "observability", "Observability is discussed only in this body text.", { aliases: "ops-observability" });
 		writeSkill(root, "runtime-playbook", "A detailed runtime playbook with observability references for operations.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "observability",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("observability");
 		expect(hits[0]?.score).toBeGreaterThan(0);
@@ -149,25 +146,25 @@ describe("skill-index service", () => {
 	/** typo 조회가 en-fuzzy 후보로 동일 canonical에 도달하지만 exact 점수보다 낮은지 검증합니다. */
 	test("keeps typo observations lower than exact score", async () => {
 		writeSkill(root, "observability", "Observability body with strict ranking details.");
-		const exact = SERVICE.skillIndex.normalizeToolInput({
+		const exact = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "observability",
 			refresh: true,
 		});
-		const exactArtifacts = await SERVICE.skillIndex.loadIndex(exact);
-		const exactHits = SERVICE.skillIndex.searchByBm25(exactArtifacts, exact.query, exact.limit, exact.minScore);
+		const exactArtifacts = await SERVICE.skillIndexLoader.loadIndex(exact);
+		const exactHits = SERVICE.skillSearchEngine.searchByBm25(exactArtifacts, exact.query, exact.limit, exact.minScore);
 
-		const typo = SERVICE.skillIndex.normalizeToolInput({
+		const typo = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "observabilty",
 			refresh: false,
 		});
-		const typoArtifacts = await SERVICE.skillIndex.loadIndex(typo);
-		const typoHits = SERVICE.skillIndex.searchByBm25(typoArtifacts, typo.query, typo.limit, typo.minScore);
+		const typoArtifacts = await SERVICE.skillIndexLoader.loadIndex(typo);
+		const typoHits = SERVICE.skillSearchEngine.searchByBm25(typoArtifacts, typo.query, typo.limit, typo.minScore);
 
 		expect(exactHits[0]?.skill.canonicalName).toBe("observability");
 		expect(typoHits[0]?.skill.canonicalName).toBe("observability");
@@ -177,15 +174,15 @@ describe("skill-index service", () => {
 	/** 4자 prefix fallback가 동작하는지 검증합니다. */
 	test("resolves through four-character prefix fallback", async () => {
 		writeSkill(root, "observability", "Observability operations and monitoring for production teams.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "obse",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("observability");
 		expect(hits[0]?.score).toBeGreaterThan(0);
@@ -195,15 +192,15 @@ describe("skill-index service", () => {
 	test("sorts equal-scoring hits by canonical name", async () => {
 		writeSkill(root, "zeta-alpha", "alpha");
 		writeSkill(root, "alpha-zeta", "alpha");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "alpha",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 
 		expect(hits[0]?.skill.canonicalName).toBe("alpha-zeta");
 		expect(hits[1]?.skill.canonicalName).toBe("zeta-alpha");
@@ -214,20 +211,20 @@ describe("skill-index service", () => {
 	/** minScore 상한값 바로 위에서 결과가 제거되는지 검증합니다. */
 	test("removes score below minScore threshold", async () => {
 		writeSkill(root, "observability", "Observability and ranking guidance.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "observability",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
-		const hits = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
 		const top = hits[0];
 		expect(top).toBeDefined();
 		expect(top?.score).toBeGreaterThan(0);
 
-		const filtered = SERVICE.skillIndex.searchByBm25(artifacts, ctx.query, ctx.limit, (top?.score ?? 0) + 0.0001);
+		const filtered = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, (top?.score ?? 0) + 0.0001);
 		expect(filtered).toHaveLength(0);
 	});
 
@@ -236,14 +233,14 @@ describe("skill-index service", () => {
 		const corpusRoot = path.join(root, "persistent-corpus");
 		writeSkill(corpusRoot, "review", "Canonical review body.", { aliases: "review-skill", requires: "observability" });
 		writeSkill(corpusRoot, "observability", "Observability body with deep operational details.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [corpusRoot],
 			fileNames: ["SKILL.md"],
 			query: "observability",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndex.loadIndex(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		const restoredReview = artifacts.skills.find((skill) => skill.canonicalName === "review");
 		expect(restoredReview).toBeDefined();
 		expect(restoredReview?.bodyText).toContain("Canonical review body");
@@ -251,10 +248,10 @@ describe("skill-index service", () => {
 		expect(restoredReview?.aliases).toEqual(["review-skill"]);
 		expect(artifacts.docCount).toBe(2);
 
-		closeSkillIndexService();
+		closeSkillIndex();
 		fs.rmSync(corpusRoot, { recursive: true, force: true });
 
-		const fromCache = await SERVICE.skillIndex.loadIndex({ ...ctx, refresh: false });
+		const fromCache = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
 		const cachedReview = fromCache.skills.find((skill) => skill.canonicalName === "review");
 		expect(fromCache.docCount).toBe(2);
 		expect(cachedReview).toBeDefined();
@@ -266,18 +263,18 @@ describe("skill-index service", () => {
 	/** refresh true가 snapshot을 무시하고 source rewrite를 반영하는지 검증합니다. */
 	test("refresh:true ignores cache and reflects rewritten source content", async () => {
 		writeSkill(root, "observability", "Original source body.");
-		const ctx = SERVICE.skillIndex.normalizeToolInput({
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
 			action: "search",
 			roots: [root],
 			fileNames: ["SKILL.md"],
 			query: "observability",
 			refresh: true,
 		});
-		const initial = await SERVICE.skillIndex.loadIndex(ctx);
+		const initial = await SERVICE.skillIndexLoader.loadIndex(ctx);
 		expect(initial.skills.find((skill) => skill.canonicalName === "observability")?.bodyText).toContain("Original source body.");
 
 		writeSkill(root, "observability", "Rewritten source body for refresh rebuild.");
-		const rebuilt = await SERVICE.skillIndex.loadIndex({ ...ctx, refresh: true });
+		const rebuilt = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: true });
 		expect(rebuilt.skills.find((skill) => skill.canonicalName === "observability")?.bodyText).toContain(
 			"Rewritten source body for refresh rebuild.",
 		);

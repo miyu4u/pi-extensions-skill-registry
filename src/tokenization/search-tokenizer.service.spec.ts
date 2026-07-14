@@ -16,11 +16,8 @@ function writeSkill(root: string, name: string, body: string, keywords = "review
 	);
 }
 
-function closeSkillIndexService(): void {
-	const indexedService = SERVICE.skillIndex as { close?: () => void };
-	if (indexedService.close) {
-		indexedService.close();
-	}
+function closeSkillIndex(): void {
+	SERVICE.skillIndexLoader.close();
 }
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {
@@ -49,7 +46,7 @@ describe("search tokenizer service", () => {
 	});
 
 	afterEach(() => {
-		closeSkillIndexService();
+		closeSkillIndex();
 		restoreEnvironment(envSnapshot);
 		if (root) {
 			fs.rmSync(root, { recursive: true, force: true });
@@ -79,8 +76,8 @@ describe("search tokenizer service", () => {
 			query: "observability",
 			refresh: true,
 		};
-		const normalized = SERVICE.skillIndex.normalizeToolInput(ctx);
-		const artifacts = await SERVICE.skillIndex.loadIndex(normalized);
+		const normalized = SERVICE.skillInputNormalizer.normalizeToolInput(ctx);
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(normalized);
 		const variants = SERVICE.searchTokenizer.buildQueryVariants(artifacts, "obesrvability");
 
 		expect(variants[0]?.variants.some((entry) => entry.token === "observability" && entry.source === "en-fuzzy")).toBe(true);
