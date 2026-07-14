@@ -5,7 +5,6 @@ import type {
 	RawSkill,
 	SkillComposePlan,
 	SkillGraphMode,
-	SkillPackEntry,
 	SkillRelationEdgeKind,
 	SkillRelationGraph,
 	SkillRelationGraphEdge,
@@ -19,7 +18,7 @@ import type { SkillSearchEngine } from "./skill-search-engine";
 export interface SkillRelationProjection {
 	relationMode: SkillRelationMode;
 	seeds: string[];
-	entries: SkillPackEntry[];
+	entries: SkillRelationProjectionEntry[];
 	readLayers: string[][];
 	applyLayers: string[][];
 	missing: MissingSkillRelation[];
@@ -28,6 +27,11 @@ export interface SkillRelationProjection {
 	compose: SkillComposePlan;
 	graph: SkillRelationGraph;
 	diagnostics: SkillRelationGraph["diagnostics"];
+}
+
+export interface SkillRelationProjectionEntry extends ComposedSkillEntry {
+	readLayer: number | null;
+	applyLayer: number | null;
 }
 
 /** compose와 relation graph 계산의 concrete owner입니다. */
@@ -79,31 +83,22 @@ export class SkillRelationEngine {
 			}
 		});
 		const entries = projectedGraph.nodes
-			.map((node): SkillPackEntry | null => {
+			.map((node): SkillRelationProjectionEntry | null => {
 				const composeEntry = composeEntryByName.get(node.name);
 				const skill = composeEntry?.skill ?? index.skills.find((entry) => entry.canonicalName === node.name);
 				if (!skill) {
 					return null;
 				}
 				return {
-					name: skill.canonicalName,
-					path: skill.path,
-					title: skill.title,
-					category: skill.category,
-					aliases: skill.aliases,
-					requires: skill.requires,
-					recommends: skill.recommends,
+					skill,
 					reason: composeEntry?.reason ?? "seed",
 					via: composeEntry?.via ?? undefined,
 					depth: composeEntry?.depth ?? 0,
 					readLayer: readLayerByName.get(skill.canonicalName) ?? null,
 					applyLayer: applyLayerByName.get(skill.canonicalName) ?? null,
-					preview: skill.bodyText.slice(0, index.settings.includePreviewBodyChars).replace(/\n+/g, " "),
-					readPath: `skill://${skill.canonicalName}`,
-					omittedByBudget: false,
 				};
 			})
-			.filter((entry): entry is SkillPackEntry => entry !== null);
+			.filter((entry): entry is SkillRelationProjectionEntry => entry !== null);
 		return {
 			relationMode: compose.relationMode,
 			seeds: compose.seeds.map((skill) => skill.canonicalName),

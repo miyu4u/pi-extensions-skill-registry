@@ -232,7 +232,27 @@ function createRelationEngine(config: {
 		projectSkills: () => ({
 			relationMode,
 			seeds: projection.seeds,
-			entries: projection.entries,
+			entries: projection.entries.map((entry) => ({
+				skill: {
+					...makeSkill({
+						id: entry.name,
+						canonicalName: entry.name,
+						sourceRoot: "/tmp/decision",
+						path: entry.path,
+						title: entry.title,
+						category: entry.category,
+						aliases: entry.aliases,
+						requires: entry.requires,
+						recommends: entry.recommends,
+					}),
+					bodyText: entry.preview,
+				},
+				reason: entry.reason,
+				via: entry.via,
+				depth: entry.depth,
+				readLayer: entry.readLayer,
+				applyLayer: entry.applyLayer,
+			})),
 			readLayers,
 			applyLayers,
 			missing: projection.missing ?? [],

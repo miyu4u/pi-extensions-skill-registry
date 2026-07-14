@@ -451,8 +451,21 @@ export class SkillReadPacketBuilder {
 		let usedChars = 0;
 		const omittedReadPaths: string[] = [];
 		const entries = projection.entries.map((entry) => {
-			const skill = index.skills.find((candidate) => candidate.canonicalName === entry.name);
-			return { ...entry, body: includeBody ? skill?.bodyText : undefined };
+			const { skill, ...relationEntry } = entry;
+			return {
+				name: skill.canonicalName,
+				path: skill.path,
+				title: skill.title,
+				category: skill.category,
+				aliases: skill.aliases,
+				requires: skill.requires,
+				recommends: skill.recommends,
+				...relationEntry,
+				preview: skill.bodyText.slice(0, index.settings.includePreviewBodyChars).replace(/\n+/g, " "),
+				body: includeBody ? skill.bodyText : undefined,
+				readPath: `skill://${skill.canonicalName}`,
+				omittedByBudget: false,
+			} satisfies SkillPackEntry;
 		});
 		const selectedBodyPaths = new Set<string>();
 		for (const entry of [...entries].sort((left, right) => this.comparePackEntries(left, right))) {

@@ -6,10 +6,21 @@
   - `main.ts` : tool registration, schema wiring, query-only large-action gating, hook registration을 소유하는 runtime entrypoint
   - `extension.interface.ts` : runtime entrypoint를 위한 package-local `PiExtensionContract` 정의
   - `extension/` : 예약된 directory이며 runtime registration ownership은 더 이상 이곳에 두지 않음
-  - `indexing/` : corpus indexing, zero-result fallback, ranking aggregation, relation expansion, packet planning, SQLite FTS5 persistence
-    - `skill-index.service.ts` : corpus policy, process cache activation, query variant aggregation, relation traversal, packet planning
+  - `service-registry.ts` : 모든 indexing/tokenization/prompt/settings service를 생성하고 `SERVICE`로 노출하는 composition root이며 concrete `new` 호출과 의존성 wiring의 single location
+  - `indexing/` : corpus indexing, zero-result fallback, ranking aggregation, relation expansion, packet planning, SQLite FTS5 persistence를 각 concrete service가 소유하며 `./indexing` barrel로 노출
+    - `skill-input-normalizer.ts` : tool 입력을 settings 기반 실행 컨텍스트로 정규화
+    - `skill-file-scanner.ts` : skill 문서 후보를 filesystem에서 수집
+    - `skill-document-parser.ts` : skill markdown과 frontmatter를 `RawSkill` 문서로 변환
+    - `active-index-store.ts` : process 활성 index identity와 snapshot token의 단일 mutable owner
+    - `skill-index-loader.ts` : skill index 생성, cache, snapshot lifecycle의 concrete owner
     - `skill-search-database.interface.ts` : SQLite snapshot/search lifecycle contract
     - `skill-search-database.service.ts` : 소유하는 SQLite schema, disk snapshot persistence, FTS5 vocabulary/BM25 query, connection lifecycle
+    - `skill-search-engine.ts` : search, exact resolve, zero-result fallback의 concrete owner
+    - `skill-relation-engine.ts` : `requires`/`recommends`/`related` relation traversal과 projection
+    - `skill-decision-engine.ts` : `decide`/`compare`/`recommend`/`plan`/`route` 결정 로직
+    - `skill-index-diagnostics.ts` : index validation과 audit report의 concrete owner
+    - `skill-read-packet-builder.ts` : read-side packet projection(brief, bundle, session, turn, handoff, recovery, resume)
+    - `skill-execution-packet-builder.ts` : serialization/execution packet projection의 concrete owner
   - `tokenization/` : English/Korean token derivation과 공용 query tokenization
   - `prompt/` : `before_agent_start` prompt-slimming hook
   - `settings/` : settings lookup과 normalization

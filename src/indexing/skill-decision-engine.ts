@@ -49,14 +49,14 @@ export class SkillDecisionEngine {
 			relationMode: pack.relationMode,
 			seeds: pack.seeds,
 			entries: pack.entries.map((entry) => {
-				const hit = hitByName.get(entry.name);
+				const hit = hitByName.get(entry.skill.canonicalName);
 				return {
-					name: entry.name,
-					readPath: entry.readPath,
-					path: entry.path,
-					title: entry.title,
-					category: entry.category,
-					aliases: entry.aliases,
+					name: entry.skill.canonicalName,
+					readPath: `skill://${entry.skill.canonicalName}`,
+					path: entry.skill.path,
+					title: entry.skill.title,
+					category: entry.skill.category,
+					aliases: entry.skill.aliases,
 					reason: entry.reason,
 					via: entry.via,
 					depth: entry.depth,
@@ -65,7 +65,7 @@ export class SkillDecisionEngine {
 					score: hit?.score,
 					coverage: hit?.coverage,
 					matchedTerms: hit?.matchedTerms ?? [],
-					matchPreview: entry.preview,
+					matchPreview: entry.skill.bodyText.slice(0, index.settings.includePreviewBodyChars).replace(/\n+/g, " "),
 				} satisfies SkillExplainEntry;
 			}),
 			missing: pack.missing,
@@ -402,7 +402,7 @@ export class SkillDecisionEngine {
 			Math.max(summaryLimit, plan.steps.length),
 			minScore,
 		);
-		const entryByName = new Map(pack.entries.map((entry) => [entry.name, entry] as const));
+		const entryByName = new Map(pack.entries.map((entry) => [entry.skill.canonicalName, entry] as const));
 		const phases: SkillRoutePhase[] = [];
 		for (const step of plan.steps.slice(0, summaryLimit)) {
 			const packEntry = entryByName.get(step.name);

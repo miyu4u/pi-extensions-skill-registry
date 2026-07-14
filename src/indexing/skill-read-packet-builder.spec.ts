@@ -88,21 +88,13 @@ function makeIndex(fixtures: FixturePackRow[]): IndexArtifacts {
 }
 
 function makeProjection(fixtures: FixturePackRow[]): SkillRelationProjection {
-	const entries = fixtures.map((fixture) => ({
-		name: fixture.name,
-		path: fixture.path,
-		title: fixture.name,
-		category: "runtime",
-		aliases: [],
-		requires: [],
-		recommends: [],
+	const skills = makeIndex(fixtures).skills;
+	const entries = fixtures.map((fixture, index) => ({
+		skill: skills[index],
 		reason: fixture.reason,
 		depth: fixture.depth,
 		readLayer: fixture.readLayer,
 		applyLayer: fixture.applyLayer,
-		preview: fixture.body,
-		readPath: `skill://${fixture.name}`,
-		omittedByBudget: false,
 	}));
 
 	return {
@@ -123,12 +115,12 @@ function makeProjection(fixtures: FixturePackRow[]): SkillRelationProjection {
 		graph: {
 			mode: "outbound",
 			seeds: fixtures.map((fixture) => fixture.name),
-			nodes: entries.map((entry) => ({
-				name: entry.name,
-				path: entry.path,
-				title: entry.title,
-				category: entry.category,
-				aliases: entry.aliases,
+			nodes: entries.map(({ skill }) => ({
+				name: skill.canonicalName,
+				path: skill.path,
+				title: skill.title,
+				category: skill.category,
+				aliases: skill.aliases,
 			})),
 			edges: [],
 			readLayers: fixtures.map((fixture) => [fixture.name]),
