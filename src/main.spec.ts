@@ -91,11 +91,13 @@ describe("main entrypoint integration", () => {
 		const { tools, beforeAgentStart } = registerHarness();
 
 		expect(tools).toHaveLength(1);
-		expect(tools[0]?.name).toBe(SkillRegistryToolContract.name);
+		expect(tools[0]?.name).toBe("skill_registry");
 		expect(tools[0]?.label).toBe(SkillRegistryToolContract.label);
 		expect(tools[0]?.description).toBe(SkillRegistryToolContract.description);
-		expect(JSON.stringify(tools[0]?.parameters)).toContain('"discover"');
-		expect(JSON.stringify(tools[0]?.parameters)).toContain('"verification-packet"');
+		const serializedParameters = JSON.stringify(tools[0]?.parameters);
+		expect(serializedParameters).toContain('"discover"');
+		expect(serializedParameters).toContain('"verification-packet"');
+		expect(serializedParameters).not.toContain('"trim":true');
 		expect(beforeAgentStart).toBeDefined();
 		expect(typeof beforeAgentStart).toBe("function");
 	});

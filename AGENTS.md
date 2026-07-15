@@ -36,7 +36,7 @@
 - barrel을 module boundary에서만 사용하고, circular re-export 위험을 줄이기 위해 same-folder import는 direct import로 유지해야 한다. (MUST)
 - feature별 interface를 해당 concern directory 안에 유지하고, `src/shared/`는 cross-cutting constant와 type에만 사용해야 한다. (MUST)
 - `skill_registry` tool input schema의 single source of truth를 `src/schema.ts`에 유지해야한다.
-- 
+- tool schema에는 Google Code Assist API가 지원하지 않는 `trim: true`를 포함해서는 안 됩니다. (MUST)
 
 ## CODE STYLE
 
