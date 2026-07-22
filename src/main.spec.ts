@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "@jest/globals";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import register from "./main";
 import { SkillRegistryToolContract } from "./schema";
 import { SERVICE } from "./service-registry";

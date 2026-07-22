@@ -1,7 +1,7 @@
 {
   "name": "@miyu4u/pi-extensions-skill-registry",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Skill registry extension for SQLite FTS5 skill lookup and BM25 ranking",
   "module": "src/main.ts",
   "main": "./dist/main.js",
@@ -42,7 +42,7 @@
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config __test__/jest.e2e-config.json --passWithNoTests"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "^0.81.1"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.49"
@@ -50,7 +50,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
     "@jest/globals": "^30.4.1",
-    "@mariozechner/pi-coding-agent": "*",
+    "@earendil-works/pi-coding-agent": "^0.81.1",
     "@types/bun": "latest",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.0",
