@@ -41,6 +41,7 @@ export const SkillRegistryToolInputSchema = Type.Object({
 	]),
 	query: Type.Optional(Type.String({ maxLength: 1024 })),
 	names: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+	suggestionLimit: Type.Optional(Type.Integer({ minimum: 0, maximum: 5 })),
 	roots: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 	fileNames: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 	limit: Type.Optional(Type.Number({ minimum: 1, maximum: 200 })),

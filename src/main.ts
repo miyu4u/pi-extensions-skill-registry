@@ -139,6 +139,7 @@ function wireTools(pi: ExtensionAPI): void {
 								normalized.includeBody,
 								normalized.budgetChars,
 								normalized.budgetTokens,
+								normalized.suggestionLimit,
 							),
 						);
 					}
@@ -674,6 +675,7 @@ function wireCommands(_pi: ExtensionAPI): void {}
 function wireHooks(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", async (event) => SERVICE.promptGuidance.handleBeforeAgentStart(event));
 	pi.on("before_provider_request", (event) => SERVICE.promptGuidance.handleBeforeProviderRequest(event.payload));
+	pi.on("tool_result", (event) => SERVICE.skillReadResultCompactor.handleToolResult(event) as never);
 }
 
 /**

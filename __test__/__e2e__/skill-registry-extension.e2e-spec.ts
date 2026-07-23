@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "@jest/globals";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, it } from "@jest/globals";
 import register from "../../src/main";
 import { SERVICE } from "../../src/service-registry";
 import { SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK } from "../../src/shared";

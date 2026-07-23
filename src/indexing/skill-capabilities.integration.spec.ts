@@ -103,7 +103,117 @@ describe("skill-index service", () => {
 		const result = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["review-guide", "typescript-developer"], false, 400, 400);
 
 		expect(result.resolved.map((entry) => entry.name)).toEqual(["review", "typescript-developer"]);
+		expect(result.resolved.map((entry) => entry.readPath)).toEqual(["skill://review", "skill://typescript-developer"]);
 		expect(result.missing).toEqual([]);
+		expect(result.suggestions).toEqual([]);
+	});
+
+	/** Unicode canonical/alias와 비정상 long name이 exact 및 bounded miss 경계를 지키는지 검증합니다. */
+	test("preserves Unicode exact resolution and bounds long-name misses", async () => {
+		writeSkill(root, "한국어-검토", "한국어 검토 guide body.", { aliases: "검토-가이드" });
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [root],
+			fileNames: ["SKILL.md"],
+			refresh: true,
+		});
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const unicode = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["검토-가이드"], false, 400, 400);
+		const longName = `unknown-${"x".repeat(10_000)}`;
+		const longMiss = SERVICE.skillSearchEngine.resolveSkills(artifacts, [longName], false, 400, 400);
+
+		expect(unicode.resolved.map((entry) => entry.name)).toEqual(["한국어-검토"]);
+		expect(unicode.resolved[0]?.readPath).toBe("skill://한국어-검토");
+		expect(unicode.suggestions).toEqual([]);
+		expect(longMiss.missing).toEqual([longName]);
+		expect(longMiss.suggestions).toEqual([]);
+	});
+
+	/** close typo miss는 기본 한도 3 이하, canonical skill:// path, confidence >= 0.80 후보만 반환하는지 검증합니다. */
+	test("suggests at most three high-confidence canonical skill:// paths for close typos by default", async () => {
+		writeSkill(root, "observability", "Observability operations and monitoring for production teams.");
+		writeSkill(root, "typescript-guide", "TypeScript guide body with ranking details.");
+		writeSkill(root, "documentation-notes", "Documentation notes body for workflow authors.");
+		writeSkill(root, "runtime-metrics", "Runtime metrics body for harness plugins.");
+		writeSkill(root, "workflow-templates", "Workflow templates body for notes and checklists.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [root],
+			fileNames: ["SKILL.md"],
+			refresh: true,
+		});
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const result = SERVICE.skillSearchEngine.resolveSkills(
+			artifacts,
+			["observabilty", "typescript-guied", "documentation-notez", "runtime-metricz", "workflow-templatez"],
+			false,
+			400,
+			400,
+		);
+
+		expect(result.resolved).toEqual([]);
+		expect(result.suggestions.length).toBeGreaterThan(0);
+		expect(result.suggestions.length).toBeLessThanOrEqual(3);
+		expect(result.suggestions.every((suggestion) => suggestion.readPath === `skill://${suggestion.name}`)).toBe(true);
+		expect(result.suggestions.every((suggestion) => suggestion.confidence >= 0.8)).toBe(true);
+		expect(ctx.suggestionLimit).toBe(3);
+	});
+
+	/** 무관/저신뢰 이름과 empty corpus는 suggestion 없이 safe-zero로 남는지 검증합니다. */
+	test("returns no suggestions for unrelated low-confidence names and empty corpus", async () => {
+		writeSkill(root, "observability", "Observability operations and monitoring for production teams.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [root],
+			fileNames: ["SKILL.md"],
+			refresh: true,
+		});
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const unrelated = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["definitely-not-a-real-skill"], false, 400, 400);
+
+		expect(unrelated.missing).toEqual(["definitely-not-a-real-skill"]);
+		expect(unrelated.suggestions).toEqual([]);
+
+		const emptyRoot = path.join(root, "empty-corpus");
+		fs.mkdirSync(emptyRoot, { recursive: true });
+		const emptyCtx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [emptyRoot],
+			fileNames: ["SKILL.md"],
+			refresh: true,
+		});
+		const emptyArtifacts = await SERVICE.skillIndexLoader.loadIndex(emptyCtx);
+		const empty = SERVICE.skillSearchEngine.resolveSkills(emptyArtifacts, ["observabilty"], false, 400, 400);
+
+		expect(emptyArtifacts.docCount).toBe(0);
+		expect(empty.missing).toEqual(["observabilty"]);
+		expect(empty.suggestions).toEqual([]);
+	});
+
+	/** 명시적 suggestionLimit 5는 hard cap으로 상한되며 그 이상을 반환하지 않는지 검증합니다. */
+	test("caps explicit suggestionLimit 5 at the hard suggestion ceiling", async () => {
+		writeSkill(root, "observability", "Observability operations and monitoring for production teams.");
+		writeSkill(root, "typescript-guide", "TypeScript guide body with ranking details.");
+		writeSkill(root, "documentation-notes", "Documentation notes body for workflow authors.");
+		writeSkill(root, "runtime-metrics", "Runtime metrics body for harness plugins.");
+		writeSkill(root, "workflow-templates", "Workflow templates body for notes and checklists.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [root],
+			fileNames: ["SKILL.md"],
+			suggestionLimit: 5,
+			refresh: true,
+		});
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const typos = ["observabilty", "typescript-guied", "documentation-notez", "runtime-metricz", "workflow-templatez"];
+		const result = SERVICE.skillSearchEngine.resolveSkills(artifacts, typos, false, 400, 400, ctx.suggestionLimit);
+		const overLimit = SERVICE.skillSearchEngine.resolveSkills(artifacts, typos, false, 400, 400, 99);
+
+		expect(ctx.suggestionLimit).toBe(5);
+		expect(result.suggestions).toHaveLength(5);
+		expect(result.suggestions.every((suggestion) => suggestion.readPath.startsWith("skill://"))).toBe(true);
+		expect(result.suggestions.every((suggestion) => suggestion.confidence >= 0.8)).toBe(true);
+		expect(overLimit.suggestions).toHaveLength(5);
 	});
 
 	/** compose가 alias seed와 requires relation을 확장하는지 검증합니다. */
