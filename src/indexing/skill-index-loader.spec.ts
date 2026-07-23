@@ -53,6 +53,7 @@ function makeContext(databasePath: string, overrides: Partial<ToolContext> = {})
 		action: "index",
 		names: [],
 		orderedNames: [],
+		suggestionLimit: 3,
 		roots: ["/skills"],
 		fileNames: ["SKILL.md"],
 		limit: 10,

@@ -63,6 +63,7 @@ export type ToolInput = {
 	action: SkillRegistryAction;
 	query?: string;
 	names?: string[];
+	suggestionLimit?: number;
 	roots?: string[];
 	fileNames?: string[];
 	limit?: number;
@@ -84,6 +85,7 @@ export type ToolContext = {
 	query?: string;
 	names: string[];
 	orderedNames: string[];
+	suggestionLimit: number;
 	roots: string[];
 	fileNames: string[];
 	limit: number;
@@ -215,10 +217,18 @@ export type SkillResolveEntry = {
 	omittedByBudget: boolean;
 };
 
+/** exact resolve 실패 시 검토할 수 있는 bounded 후보입니다. */
+export type SkillResolveSuggestion = {
+	name: string;
+	readPath: string;
+	confidence: number;
+};
+
 /** resolve 결과 payload입니다. */
 export type SkillResolveResult = {
 	resolved: SkillResolveEntry[];
 	missing: string[];
+	suggestions: SkillResolveSuggestion[];
 	omittedReadPaths: string[];
 	budget: {
 		requestedChars: number;

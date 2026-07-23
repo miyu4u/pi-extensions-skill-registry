@@ -6,8 +6,16 @@ import type {
 	SkillGapResult,
 	SkillResolveEntry,
 	SkillResolveResult,
+	SkillResolveSuggestion,
 	SkillSearchDiagnostics,
 	SkillSearchResult,
+} from "../shared";
+import {
+	SKILL_RESOLVE_RECOVERY_MAX_BYTES,
+	SKILL_RESOLVE_RECOVERY_MAX_TOKENS,
+	SKILL_RESOLVE_SUGGESTION_DEFAULT_LIMIT,
+	SKILL_RESOLVE_SUGGESTION_HARD_CAP,
+	SKILL_RESOLVE_SUGGESTION_MIN_CONFIDENCE,
 } from "../shared";
 import type { SearchTokenizerInterface } from "../tokenization";
 import type { ActiveIndexStore } from "./active-index-store";
@@ -298,6 +306,7 @@ export class SkillSearchEngine {
 		includeBody: boolean,
 		budgetChars: number,
 		budgetTokens: number,
+		suggestionLimit = SKILL_RESOLVE_SUGGESTION_DEFAULT_LIMIT,
 	): SkillResolveResult {
 		const { resolved, missing } = this.resolveRequestedSkills(index, names);
 		const effectiveChars =
@@ -328,10 +337,12 @@ export class SkillSearchEngine {
 				omittedByBudget: Boolean(fullBody) && !canIncludeBody,
 			} satisfies SkillResolveEntry;
 		});
+		const suggestions = this.buildResolveSuggestions(index, missing, suggestionLimit);
 
 		return {
 			resolved: resolvedEntries,
 			missing,
+			suggestions,
 			omittedReadPaths,
 			budget: {
 				requestedChars: budgetChars,
@@ -340,6 +351,116 @@ export class SkillSearchEngine {
 				usedChars,
 			},
 		};
+	}
+
+	/**
+	 * exact miss를 검색 후보로 보완하되, confidence와 payload budget을 함께 적용합니다.
+	 */
+	private buildResolveSuggestions(index: IndexArtifacts, missing: string[], suggestionLimit: number): SkillResolveSuggestion[] {
+		const boundedLimit = Math.max(0, Math.min(suggestionLimit, SKILL_RESOLVE_SUGGESTION_HARD_CAP));
+		if (boundedLimit === 0 || missing.length === 0 || index.docCount === 0) {
+			return [];
+		}
+
+		const candidates = new Map<string, SkillResolveSuggestion>();
+		for (const requestedName of missing) {
+			const hits = this.searchWithDiagnostics(index, requestedName, SKILL_RESOLVE_SUGGESTION_HARD_CAP).hits;
+			for (const hit of hits) {
+				const confidence = this.calculateSuggestionConfidence(requestedName, hit.skill);
+				if (confidence < SKILL_RESOLVE_SUGGESTION_MIN_CONFIDENCE || candidates.has(hit.skill.canonicalName)) {
+					continue;
+				}
+
+				candidates.set(hit.skill.canonicalName, {
+					name: hit.skill.canonicalName,
+					readPath: `skill://${hit.skill.canonicalName}`,
+					confidence: Number(confidence.toFixed(3)),
+				});
+			}
+		}
+
+		const ranked = [...candidates.values()]
+			.sort((left, right) => {
+				if (right.confidence !== left.confidence) {
+					return right.confidence - left.confidence;
+				}
+				return left.name.localeCompare(right.name);
+			})
+			.slice(0, boundedLimit);
+		const accepted: SkillResolveSuggestion[] = [];
+		const encoder = new TextEncoder();
+		let usedBytes = 0;
+		let usedTokens = 0;
+		for (const suggestion of ranked) {
+			const suggestionText = JSON.stringify(suggestion);
+			const suggestionBytes = encoder.encode(suggestionText).byteLength;
+			const suggestionTokens = suggestionText.match(/\S+/gu)?.length ?? 0;
+			if (
+				usedBytes + suggestionBytes > SKILL_RESOLVE_RECOVERY_MAX_BYTES ||
+				usedTokens + suggestionTokens > SKILL_RESOLVE_RECOVERY_MAX_TOKENS
+			) {
+				continue;
+			}
+
+			accepted.push(suggestion);
+			usedBytes += suggestionBytes;
+			usedTokens += suggestionTokens;
+		}
+		return accepted;
+	}
+
+	/**
+	 * URI 이름과 canonical/alias의 bounded edit similarity를 confidence로 환산합니다.
+	 */
+	private calculateSuggestionConfidence(requestedName: string, skill: RawSkill): number {
+		const requested = requestedName.trim().toLocaleLowerCase();
+		if (!requested || requested.length > 256) {
+			return 0;
+		}
+
+		return Math.max(
+			...[skill.canonicalName, ...skill.aliases].map((candidate) =>
+				this.calculateEditSimilarity(requested, candidate.toLocaleLowerCase()),
+			),
+		);
+	}
+
+	/**
+	 * 긴 URI 입력이 비교 비용을 폭발시키지 않도록 two-row Levenshtein을 제한합니다.
+	 */
+	private calculateEditSimilarity(source: string, target: string): number {
+		if (!target || target.length > 256) {
+			return 0;
+		}
+		if (source === target) {
+			return 1;
+		}
+
+		const previous = Array.from({ length: target.length + 1 }, (_, index) => index);
+		const current = new Array<number>(target.length + 1).fill(0);
+		for (let row = 1; row <= source.length; row += 1) {
+			current[0] = row;
+			let rowMinimum = current[0];
+			for (let column = 1; column <= target.length; column += 1) {
+				const substitutionCost = source[row - 1] === target[column - 1] ? 0 : 1;
+				const value = Math.min(
+					(previous[column] ?? Number.MAX_SAFE_INTEGER) + 1,
+					(current[column - 1] ?? Number.MAX_SAFE_INTEGER) + 1,
+					(previous[column - 1] ?? Number.MAX_SAFE_INTEGER) + substitutionCost,
+				);
+				current[column] = value;
+				rowMinimum = Math.min(rowMinimum, value);
+			}
+			if (rowMinimum > Math.max(source.length, target.length)) {
+				return 0;
+			}
+			for (let column = 0; column <= target.length; column += 1) {
+				previous[column] = current[column] ?? Number.MAX_SAFE_INTEGER;
+			}
+		}
+
+		const distance = previous[target.length] ?? Math.max(source.length, target.length);
+		return Math.max(0, 1 - distance / Math.max(source.length, target.length));
 	}
 
 	/**

@@ -13,6 +13,7 @@ import {
 	SkillSearchEngine,
 } from "./indexing";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
+import { SkillReadResultCompactorService } from "./results";
 import { SettingsLoaderService } from "./settings/settings-loader.service";
 import { EnglishFuzzyMatcherService } from "./tokenization/english-fuzzy-matcher.service";
 import { KoreanMorphologyAnalyzerService } from "./tokenization/korean-morphology-analyzer.service";
@@ -23,6 +24,7 @@ const englishFuzzyMatcher = new EnglishFuzzyMatcherService();
 const koreanMorphologyAnalyzer = new KoreanMorphologyAnalyzerService();
 const searchTokenizer = new SearchTokenizerService(englishFuzzyMatcher, koreanMorphologyAnalyzer);
 const promptGuidance = new PromptGuidanceService();
+const skillReadResultCompactor = new SkillReadResultCompactorService();
 export const createSkillSearchDatabaseService = (): SkillSearchDatabaseService => new SkillSearchDatabaseService();
 
 const skillSearchDatabase = createSkillSearchDatabaseService();
@@ -50,6 +52,7 @@ export const SERVICE = {
 	koreanMorphologyAnalyzer,
 	searchTokenizer,
 	promptGuidance,
+	skillReadResultCompactor,
 	skillSearchDatabase,
 	skillInputNormalizer,
 	skillFileScanner,

@@ -22,6 +22,28 @@ describe("prompt guidance service", () => {
 		[key: string]: unknown;
 	};
 
+	/** guidance가 unknown URI 직접 읽기와 full catalog 확장을 금지하는지 검증합니다. */
+	test("forbids direct unknown skill:// URI reads and full-catalog recovery in prompt guidance", () => {
+		expect(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK).toContain(
+			"Do not guess or directly read an unknown `skill://<name>` URI; use `discover` or `search`, then `resolve`, then read the returned canonical URI.",
+		);
+		expect(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK).toContain(
+			"Unknown URI recovery is bounded: low-confidence or missing suggestions are safe-zero and must not expand to the full skill catalog.",
+		);
+		expect(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK).toContain("Skill catalog omitted from the system prompt");
+		expect(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK).not.toContain("Available:");
+
+		const event: ProviderPayload = {
+			systemPrompt: ["Intro", "<skills>", "- legacy catalog entry", "</skills>", "Tail"].join("\n"),
+		};
+		const result = SERVICE.promptGuidance.handleBeforeAgentStart(event);
+		expect(result?.systemPrompt).toContain(
+			"Do not guess or directly read an unknown `skill://<name>` URI; use `discover` or `search`, then `resolve`, then read the returned canonical URI.",
+		);
+		expect(result?.systemPrompt).toContain("must not expand to the full skill catalog");
+		expect(result?.systemPrompt).not.toContain("- legacy catalog entry");
+	});
+
 	/** systemPrompt 문자열에서 첫 skills block을 guid block으로 치환하는지 검증합니다. */
 	test("replaces only the first skills block in a string systemPrompt", () => {
 		const event: ProviderPayload = {
@@ -47,7 +69,6 @@ describe("prompt guidance service", () => {
 		expect(result?.systemPrompt).toContain("<skills>");
 		expect(result?.systemPrompt.match(/<skills>/g)?.length).toBe(2);
 	});
-
 	/** block 배열 prompt에서 첫 skills block만 치환하고 marker 없이 호출하면 no-op인지 검증합니다. */
 	test("rewrites first block from message-array prompts and no-ops without markers", () => {
 		const originalPrompt = [
@@ -190,11 +211,16 @@ describe("prompt guidance service", () => {
 		const result = SERVICE.promptGuidance.handleBeforeProviderRequest(event) as ProviderPayload;
 		const contents = result?.messages?.[0]?.content as unknown[] | undefined;
 
-		expect(Array.isArray(contents)).toBe(true);
-		expect(contents?.[0]).toMatchObject({ type: "text", text: expect.any(String) });
-		expect((contents?.[0] as TextPart).text).toContain(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK);
-		expect((contents?.[0] as TextPart).text).not.toContain("- legacy catalog");
-		expect((contents?.[1] as TextPart).text).toBe("tail text");
+		if (!Array.isArray(contents) || contents.length < 2) {
+			throw new Error("expected two text content parts");
+		}
+		const firstContent = contents[0] as TextPart;
+		const secondContent = contents[1] as TextPart;
+		expect(firstContent.type).toBe("text");
+		expect(typeof firstContent.text).toBe("string");
+		expect(firstContent.text).toContain(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK);
+		expect(firstContent.text).not.toContain("- legacy catalog");
+		expect(secondContent.text).toBe("tail text");
 		expect(result).not.toBe(event);
 	});
 

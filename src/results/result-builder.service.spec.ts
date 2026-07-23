@@ -101,7 +101,56 @@ describe("result builder", () => {
 		const result = buildResolveResult(artifacts, resolved);
 
 		expect(textFromResult(result)).toContain("review");
-		expect(result.details).toMatchObject({ kind: "resolve" });
+		expect(textFromResult(result)).toContain("skill://review");
+		expect(result.details).toMatchObject({ kind: "resolve", suggestions: [] });
+	});
+
+	/** suggestion이 없는 miss는 compact discover/search recovery만 안내하고 catalog를 펼치지 않는지 검증합니다. */
+	test("emits compact discover/search recovery when resolve has no suggestions", async () => {
+		writeSkill(root, "alpha", "Security review tooling with strict coverage metrics and ranking.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [root],
+			fileNames: ["SKILL.md"],
+			refresh: true,
+		});
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const unrelated = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["definitely-not-a-real-skill"], false, 200, 200);
+		const unrelatedResult = buildResolveResult(artifacts, unrelated);
+		const unrelatedText = textFromResult(unrelatedResult);
+
+		expect(unrelated.suggestions).toEqual([]);
+		expect(unrelatedText).toContain(
+			"recovery: use skill_registry discover/search, then resolve the exact canonical name before reading.",
+		);
+		expect(unrelatedText).not.toContain("bounded suggestions:");
+		expect(unrelatedText).not.toContain("Available:");
+		expect(unrelatedResult.details).toMatchObject({ kind: "resolve", suggestions: [], missing: ["definitely-not-a-real-skill"] });
+
+		const emptyRoot = path.join(root, "empty-corpus");
+		fs.mkdirSync(emptyRoot, { recursive: true });
+		const emptyCtx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [emptyRoot],
+			fileNames: ["SKILL.md"],
+			refresh: true,
+		});
+		const emptyArtifacts = await SERVICE.skillIndexLoader.loadIndex(emptyCtx);
+		const empty = SERVICE.skillSearchEngine.resolveSkills(emptyArtifacts, ["observabilty"], false, 200, 200);
+		const emptyResult = buildResolveResult(emptyArtifacts, empty);
+		const emptyText = textFromResult(emptyResult);
+
+		expect(emptyArtifacts.docCount).toBe(0);
+		expect(empty.suggestions).toEqual([]);
+		expect(emptyText).toContain("recovery: use skill_registry discover/search, then resolve the exact canonical name before reading.");
+		expect(emptyText).not.toContain("bounded suggestions:");
+
+		const longName = `unknown-${"x".repeat(10_000)}`;
+		const longMiss = SERVICE.skillSearchEngine.resolveSkills(emptyArtifacts, [longName], false, 200, 200);
+		const longResult = buildResolveResult(artifacts, longMiss);
+		const longText = textFromResult(longResult);
+		expect(new TextEncoder().encode(longText).byteLength).toBeLessThanOrEqual(4096);
+		expect(longText).toContain("recovery: use skill_registry discover/search");
 	});
 
 	/** metrics builder가 corpus summary를 text/details로 노출하는지 검증합니다. */

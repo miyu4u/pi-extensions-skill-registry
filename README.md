@@ -11,6 +11,10 @@
 - 검색, 선택 이유, coverage, graph, 작업 순서, 읽기 packet, 실행 packet 제공
 - corpus validation, audit, metrics 조회
 - runtime의 skill catalog를 compact guidance로 대체하는 prompt hook
+  - `tool_result` hook은 exact unknown `skill://` read error만 bounded compact recovery로 바꾸고, valid/non-skill/unrelated errors는 pass-through합니다.
+  - recovery는 `discover/search -> resolve -> read` 순서이며, catalog/suggestion text를 그대로 복사하지 않고 <=4096-byte compact recovery만 반환합니다.
+  - host wrapper 적용 시 replacement는 `isError:false` transport success로 돌아가지만, text는 semantic unknown을 유지하는 trade-off가 있습니다.
+  - plugin package reload 후에만 새 동작이 적용된다는 setup mental model과 일치합니다.
 
 extension은 `skill_registry`라는 하나의 tool을 등록합니다. 별도의 slash command나 custom command는 등록하지 않습니다.
 
@@ -166,6 +170,7 @@ Skill 본문을 작성합니다.
 | `action` | enum | 실행할 동작 |
 | `query` | string, 최대 1024자 | 검색어 또는 작업 설명 |
 | `names` | string[] | canonical name 또는 alias |
+| `suggestionLimit` | integer, 0..5 | `resolve` missing recovery 후보 수. 기본 3 |
 | `roots` | string[] | 이번 요청에서 사용할 skill root |
 | `fileNames` | string[] | 이번 요청에서 탐색할 파일명 |
 | `limit` | number, 1..200 | 결과 수. task size와 `maxTopK`에 따라 다시 제한 |
@@ -188,6 +193,7 @@ Skill 본문을 작성합니다.
 - `budgetChars`: `4000`
 - `budgetTokens`: `1000`
 - `coverageThreshold`: `0.7`
+- `suggestionLimit`: `3` (최대 5)
 - `graphMode`: `outbound`
 - `includeBody`: `resolve`에서는 `false`, 그 외 action에서는 `true`
 - `relationMode`: `large`에서는 `full`, 그 외에는 `required`
@@ -277,11 +283,15 @@ Skill 본문을 작성합니다.
 
 `resolve`는 canonical name 또는 alias의 exact match만 사용합니다. `compose`와 packet action의 관계 확장은 `requires`를 기본으로 하며, `relationMode: "full"`일 때 `recommends`까지 포함합니다.
 
+알 수 없는 `skill://<name>`을 직접 읽어 resolver 오류를 복구하지 않습니다. `discover` 또는 `search`로 후보를 좁힌 뒤 `resolve`에서 exact canonical name을 확인하고 반환된 `skill://<canonical>`만 읽습니다. `resolve`의 missing recovery 후보는 최대 5개로 제한되며, 확신이 낮으면 전체 catalog 대신 compact discover/search 안내만 반환합니다.
+
 `small`과 `medium`에서 `names` 없이 `decide`, `plan`, `route`, `current-turn-packet`, `session-packet`, `turn-packet`을 query로 실행할 수 없습니다. 이 동작은 `large`에서 허용되며, 작은 작업에서는 먼저 검색하거나 `names`를 지정해야 합니다.
 
 ## Prompt hook
 
 extension은 `before_agent_start`와 `before_provider_request` lifecycle hook을 연결합니다. runtime이 제공하는 `<skills>...</skills>` catalog가 있으면 첫 번째 block을 compact skill-registry guidance로 대체해 prompt에 전체 catalog를 반복해서 넣지 않도록 합니다.
+
+`tool_result` hook은 `skill://` read 오류 중 exact unknown case만 위 compact recovery로 치환합니다. `discover/search -> resolve -> read`를 통해 복구하되, catalog 또는 suggestion 문구를 복사하지 않고 <=4096-byte 응답만 생성합니다. valid skill read, non-skill read, 그 밖의 unrelated error는 모두 pass-through합니다. host wrapper에서는 transport success(`isError:false`)로 보여도 text는 semantic unknown을 유지하므로, operator는 이 replacement를 "성공으로 전달되지만 의미는 unknown"인 타협으로 이해해야 합니다. 이 동작은 plugin package reload 이후에 반영됩니다.
 
 ## 개발
 

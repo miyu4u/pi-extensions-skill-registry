@@ -38,6 +38,7 @@ import type {
 	SkillWriteScriptPacketResult,
 	ToolContext,
 } from "../shared";
+import { SKILL_RESOLVE_RECOVERY_MAX_BYTES, SKILL_RESOLVE_RECOVERY_MAX_TOKENS } from "../shared";
 
 /** select 결과 미리보기 payload입니다. */
 type SelectedSkillPreview = {
@@ -53,6 +54,30 @@ type SelectedSkillPreview = {
 	preview: string;
 	body?: string;
 };
+
+/**
+ * unknown resolve 결과가 입력 name 길이에 따라 커지지 않도록 recovery text를 자릅니다.
+ */
+function boundResolveRecoveryText(text: string): string {
+	const encoder = new TextEncoder();
+	const characters = Array.from(text);
+	let lower = 0;
+	let upper = characters.length;
+	let best = 0;
+	while (lower <= upper) {
+		const end = Math.floor((lower + upper) / 2);
+		const candidate = characters.slice(0, end).join("");
+		const bytes = encoder.encode(candidate).byteLength;
+		const tokens = candidate.match(/\S+/gu)?.length ?? 0;
+		if (bytes <= SKILL_RESOLVE_RECOVERY_MAX_BYTES && tokens <= SKILL_RESOLVE_RECOVERY_MAX_TOKENS) {
+			best = end;
+			lower = end + 1;
+			continue;
+		}
+		upper = end - 1;
+	}
+	return characters.slice(0, best).join("");
+}
 
 /** retrospective telemetry snapshot을 구성합니다. */
 function buildComplaintTelemetrySnapshot(
@@ -460,20 +485,31 @@ export function buildResolveResult(_index: IndexArtifacts, result: SkillResolveR
 			.filter(Boolean)
 			.join("\n"),
 	);
+	const suggestionLines = result.suggestions.map(
+		(suggestion, idx) => `${idx + 1}. ${suggestion.name} -> ${suggestion.readPath} (confidence=${suggestion.confidence.toFixed(3)})`,
+	);
+
+	const text = [
+		`skill_registry resolve 결과 (${result.resolved.length}건)`,
+		`missing: ${result.missing.length} | omitted: ${result.omittedReadPaths.length}`,
+		`budget: requestedChars=${result.budget.requestedChars} requestedTokens=${result.budget.requestedTokens} effectiveChars=${result.budget.effectiveChars} usedChars=${result.budget.usedChars}`,
+		result.suggestions.length
+			? `bounded suggestions:\n${suggestionLines.join("\n")}`
+			: result.missing.length
+				? "recovery: use skill_registry discover/search, then resolve the exact canonical name before reading."
+				: "recovery: -",
+		result.missing.length ? `missing names: ${result.missing.join(", ")}` : "missing names: -",
+		result.omittedReadPaths.length ? `omitted read paths: ${result.omittedReadPaths.join(", ")}` : "omitted read paths: -",
+		"",
+		lines.length ? lines.join("\n\n") : "resolved skill 없음",
+	].join("\n");
+	const boundedText = result.missing.length > 0 && result.resolved.length === 0 ? boundResolveRecoveryText(text) : text;
 
 	return {
 		content: [
 			{
 				type: "text",
-				text: [
-					`skill_registry resolve 결과 (${result.resolved.length}건)`,
-					`missing: ${result.missing.length} | omitted: ${result.omittedReadPaths.length}`,
-					`budget: requestedChars=${result.budget.requestedChars} requestedTokens=${result.budget.requestedTokens} effectiveChars=${result.budget.effectiveChars} usedChars=${result.budget.usedChars}`,
-					result.missing.length ? `missing names: ${result.missing.join(", ")}` : "missing names: -",
-					result.omittedReadPaths.length ? `omitted read paths: ${result.omittedReadPaths.join(", ")}` : "omitted read paths: -",
-					"",
-					lines.length ? lines.join("\n\n") : "resolved skill 없음",
-				].join("\n"),
+				text: boundedText,
 			},
 		],
 		details: {
@@ -481,6 +517,7 @@ export function buildResolveResult(_index: IndexArtifacts, result: SkillResolveR
 			resolved: result.resolved.map(({ body, ...rest }) => rest),
 			resolvedWithBody: result.resolved,
 			missing: result.missing,
+			suggestions: result.suggestions,
 			omittedReadPaths: result.omittedReadPaths,
 			budget: result.budget,
 		},

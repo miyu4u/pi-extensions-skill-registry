@@ -1,14 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "@jest/globals";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, test } from "@jest/globals";
 import register from "./main";
+import type {
+	SkillReadResultCompactorReplacement,
+	SkillReadResultCompactorToolResult,
+} from "./results/skill-read-result-compactor.interface";
 import { SkillRegistryToolContract } from "./schema";
 import { SERVICE } from "./service-registry";
+import type { SkillRegistryToolResult } from "./shared";
 
 type EnvSnapshot = NodeJS.ProcessEnv;
 
-type ToolResult = { content: Array<{ type: string; text?: string }>; details?: unknown };
+type ToolResult = SkillRegistryToolResult;
 
 type RegisteredTool = {
 	name?: string;
@@ -18,8 +23,10 @@ type RegisteredTool = {
 	execute?: (...args: unknown[]) => Promise<ToolResult>;
 };
 
+type ToolResultHandler = (event: SkillReadResultCompactorToolResult) => SkillReadResultCompactorReplacement | undefined;
+
 /** 등록된 tool text payload 추출 helper입니다. */
-function textFromResult(result: { content: Array<{ type: string; text?: string }> }): string {
+function textFromResult(result: ToolResult): string {
 	return result.content.find((item): item is { type: "text"; text: string } => item.type === "text")?.text ?? "";
 }
 
@@ -37,9 +44,11 @@ function writeSkill(root: string, name: string, body: string): void {
 function registerHarness(): {
 	tools: Array<RegisteredTool>;
 	beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined;
+	toolResultHandler: ToolResultHandler | undefined;
 } {
 	const tools: Array<RegisteredTool> = [];
 	let beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined;
+	let toolResultHandler: ToolResultHandler | undefined;
 
 	const pi = {
 		registerTool(tool: unknown) {
@@ -48,13 +57,17 @@ function registerHarness(): {
 		on(eventName: string, handler: unknown) {
 			if (eventName === "before_agent_start") {
 				beforeAgentStart = handler as (event: { systemPrompt?: string | readonly string[] }) => unknown;
+			} else if (eventName === "tool_result") {
+				toolResultHandler = (event) =>
+					(handler as (event: SkillReadResultCompactorToolResult) => SkillReadResultCompactorReplacement | null)(event) ??
+					undefined;
 			}
 		},
 	} as unknown as ExtensionAPI;
 
 	register(pi);
 
-	return { tools, beforeAgentStart };
+	return { tools, beforeAgentStart, toolResultHandler };
 }
 
 function closeSkillIndex(): void {
@@ -88,7 +101,7 @@ describe("main entrypoint integration", () => {
 
 	test("registers the skill_registry tool and before_agent_start hook directly", () => {
 		envSnapshot = { ...process.env };
-		const { tools, beforeAgentStart } = registerHarness();
+		const { tools, beforeAgentStart, toolResultHandler } = registerHarness();
 
 		expect(tools).toHaveLength(1);
 		expect(tools[0]?.name).toBe("skill_registry");
@@ -100,6 +113,8 @@ describe("main entrypoint integration", () => {
 		expect(serializedParameters).not.toContain('"trim":true');
 		expect(beforeAgentStart).toBeDefined();
 		expect(typeof beforeAgentStart).toBe("function");
+		expect(toolResultHandler).toBeDefined();
+		expect(typeof toolResultHandler).toBe("function");
 	});
 
 	test("executes discover action through the registered tool", async () => {
@@ -207,5 +222,26 @@ describe("main entrypoint integration", () => {
 		} finally {
 			SERVICE.skillIndexLoader.loadIndex = originalLoadIndex;
 		}
+	});
+
+	test("returns compacted unknown tool_result replacements and leaves unrelated events undefined", () => {
+		envSnapshot = { ...process.env };
+		const { toolResultHandler } = registerHarness();
+		if (!toolResultHandler) {
+			throw new Error("expected registered tool_result handler");
+		}
+
+		const replacement = toolResultHandler({
+			toolName: "read",
+			isError: true,
+			input: { path: "skill://alpha" },
+			content: [{ type: "text", text: "Unknown skill: alpha\nAvailable: beta" }],
+		}) as SkillReadResultCompactorReplacement | null;
+		expect(replacement).toMatchObject({
+			isError: false,
+		});
+		expect(replacement?.content?.[0]?.text ?? "").not.toContain("Available:");
+		expect(toolResultHandler({ toolName: "read", isError: false, content: [] })).toBeUndefined();
+		expect(toolResultHandler({ toolName: "other", isError: true, content: [] })).toBeUndefined();
 	});
 });

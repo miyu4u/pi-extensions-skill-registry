@@ -1,7 +1,13 @@
 import os from "node:os";
 import path from "node:path";
 import type { SettingsLoaderInterface } from "../settings";
-import { DEFAULT_FILE_NAMES, type ToolContext, type ToolInput } from "../shared";
+import {
+	DEFAULT_FILE_NAMES,
+	SKILL_RESOLVE_SUGGESTION_DEFAULT_LIMIT,
+	SKILL_RESOLVE_SUGGESTION_HARD_CAP,
+	type ToolContext,
+	type ToolInput,
+} from "../shared";
 import { normalizeSkillName } from "./skill-name-normalizer";
 
 const TASK_SIZE_LIMITS = {
@@ -27,6 +33,10 @@ export class SkillInputNormalizer {
 			query: params.query?.trim(),
 			names: this.normalizeNames(params.names),
 			orderedNames: this.normalizeNames(params.names, true),
+			suggestionLimit: Math.max(
+				0,
+				Math.min(params.suggestionLimit ?? SKILL_RESOLVE_SUGGESTION_DEFAULT_LIMIT, SKILL_RESOLVE_SUGGESTION_HARD_CAP),
+			),
 			roots: mergedRoots,
 			fileNames: mergedFileNames,
 			limit,
