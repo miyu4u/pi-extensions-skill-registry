@@ -3,17 +3,18 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import type { IndexedStats, RawSkill, SkillFrontmatter, SkillFrontmatterRecord, SkillRegistrySettings } from "../shared";
+import type { RawSkill, SkillFrontmatter, SkillFrontmatterRecord, SkillRegistrySettings } from "../shared";
 import type {
 	SkillSearchDatabaseInterface,
 	SkillSearchDatabaseMatch,
 	SkillSearchDocument,
+	SkillSearchIndexedStats,
 	SkillSearchSnapshot,
 	SkillSearchSnapshotInput,
 } from "./skill-search-database.interface";
 
 const SKILL_REGISTRY_APPLICATION_ID = 1397445191;
-const SKILL_REGISTRY_USER_VERSION = 1;
+const SKILL_REGISTRY_USER_VERSION = 3;
 const DEFAULT_POSIX_DIR_MODE = 0o700;
 const DEFAULT_POSIX_FILE_MODE = 0o600;
 
@@ -45,6 +46,7 @@ interface SkillRow {
 	canonical_name: string;
 	path: string;
 	source_root: string;
+	scope: string | null;
 	raw_frontmatter_json: string;
 	frontmatter_json: string;
 	body_text: string;
@@ -87,6 +89,7 @@ CREATE TABLE skills (
   canonical_name TEXT NOT NULL UNIQUE,
   path TEXT NOT NULL,
   source_root TEXT NOT NULL,
+  scope TEXT,
   raw_frontmatter_json TEXT NOT NULL,
   frontmatter_json TEXT NOT NULL,
   body_text TEXT NOT NULL,
@@ -130,7 +133,6 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 	public async initialize(databasePath: string): Promise<void> {
 		const resolvedPath = path.resolve(databasePath);
 		const previouslyExisted = fs.existsSync(resolvedPath);
-		const createdByThisCall = !previouslyExisted;
 
 		if (this.resolvedPath === resolvedPath && this.db !== null) {
 			return;
@@ -183,14 +185,6 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		} catch (error) {
 			this.close();
 
-			if (createdByThisCall && fs.existsSync(resolvedPath)) {
-				try {
-					fs.unlinkSync(resolvedPath);
-				} catch {
-					// best effort cleanup
-				}
-			}
-
 			if (error instanceof Error && /no such module:\s*fts5/i.test(error.message)) {
 				throw new Error("SQLite FTS5 is unavailable in this runtime", { cause: error });
 			}
@@ -237,7 +231,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 			}
 
 			const skillRows = this.getAll<SkillRow>(
-				`SELECT ordinal, skill_id, canonical_name, path, source_root, raw_frontmatter_json, frontmatter_json, body_text, title, category, keywords_json, tags_json, aliases_json, requires_json, recommends_json, text, mtime_ms
+				`SELECT ordinal, skill_id, canonical_name, path, source_root, scope, raw_frontmatter_json, frontmatter_json, body_text, title, category, keywords_json, tags_json, aliases_json, requires_json, recommends_json, text, mtime_ms
 				 FROM skills
 				 ORDER BY ordinal ASC;`,
 			);
@@ -274,7 +268,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		});
 
 		if (decodeFailure) {
-			this.clearSnapshotTables();
+			this.recreateOwnedSchema();
 		}
 
 		return snapshot;
@@ -295,6 +289,14 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		}
 
 		const snapshotToken = randomUUID();
+		const persistedSettings = this.parseSettingsRow(JSON.stringify(input.settings));
+		if (!persistedSettings) {
+			throw new Error("invalid skill search snapshot settings payload");
+		}
+		const persistedStats = this.normalizeStatsForCache(input.stats);
+		if (!persistedStats) {
+			throw new Error("invalid skill search snapshot stats payload");
+		}
 		const documentBySkillId = new Map(documents.map((document) => [document.skillId, document] as const));
 		if (documentBySkillId.size !== documents.length || input.skills.length !== documents.length) {
 			throw new Error("skill search snapshot requires exactly one document per skill");
@@ -323,16 +325,16 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 				input.requestKey,
 				input.generatedAt,
 				input.ttlMs,
-				JSON.stringify(input.settings),
+				JSON.stringify(persistedSettings),
 				JSON.stringify(input.requestedNames),
-				JSON.stringify(input.stats),
+				JSON.stringify(persistedStats),
 				0,
 			);
 
 			const insertSkill = this.prepareNonQuery(`
 				INSERT INTO skills
-				(ordinal, skill_id, canonical_name, path, source_root, raw_frontmatter_json, frontmatter_json, body_text, title, category, keywords_json, tags_json, aliases_json, requires_json, recommends_json, text, mtime_ms)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				(ordinal, skill_id, canonical_name, path, source_root, scope, raw_frontmatter_json, frontmatter_json, body_text, title, category, keywords_json, tags_json, aliases_json, requires_json, recommends_json, text, mtime_ms)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`);
 
 			const insertFts = this.prepareNonQuery(`
@@ -349,6 +351,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 					skill.canonicalName,
 					skill.path,
 					skill.sourceRoot,
+					skill.scope ?? null,
 					JSON.stringify(skill.rawFrontmatter),
 					JSON.stringify(skill.frontmatter),
 					skill.bodyText,
@@ -388,10 +391,10 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 			generatedAt: input.generatedAt,
 			ttlMs: input.ttlMs,
 			requestKey: input.requestKey,
-			settings: input.settings,
+			settings: persistedSettings,
 			requestedNames: input.requestedNames,
 			skills: orderedSkills.map(({ skill }) => skill),
-			stats: input.stats,
+			stats: persistedStats,
 			dfByTerm,
 			avgLength,
 			indexBuildMs,
@@ -470,14 +473,6 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		});
 	}
 
-	private clearSnapshotTables(): void {
-		this.runWriteTransaction(() => {
-			this.executeNonQuery("DELETE FROM skill_fts;");
-			this.executeNonQuery("DELETE FROM skills;");
-			this.executeNonQuery("DELETE FROM cache_metadata;");
-		});
-	}
-
 	private setDatabasePragmas(): void {
 		this.executePragma(`PRAGMA application_id = ${SKILL_REGISTRY_APPLICATION_ID}`);
 		this.executePragma(`PRAGMA user_version = ${SKILL_REGISTRY_USER_VERSION}`);
@@ -505,19 +500,19 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		requestKey: string;
 		settings: Required<SkillRegistrySettings>;
 		requestedNames: string[];
-		stats: IndexedStats;
+		stats: SkillSearchIndexedStats;
 		indexBuildMs: number;
 	} | null {
 		const generatedAt = this.toFiniteNumber(row.generated_at);
 		const ttlMs = this.toFiniteNumber(row.ttl_ms);
-		const settings = this.parseJson<Required<SkillRegistrySettings>>(row.settings_json);
+		const settings = this.parseSettingsRow(row.settings_json);
 		const requestedNames = this.parseJson<string[]>(row.requested_names_json);
-		const stats = this.parseJson<IndexedStats>(row.stats_json);
+		const stats = this.parseStatsRow(row.stats_json);
 		const indexBuildMs = this.toFiniteNumber(row.index_build_ms);
 		if (!row.snapshot_token || !row.request_key) {
 			return null;
 		}
-		if (!settings || !Array.isArray(requestedNames) || !stats || !Number.isFinite(generatedAt) || !Number.isFinite(ttlMs)) {
+		if (!settings || !this.isStringArray(requestedNames) || !stats || !Number.isFinite(generatedAt) || !Number.isFinite(ttlMs)) {
 			return null;
 		}
 		if (!Number.isFinite(indexBuildMs)) {
@@ -548,9 +543,20 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		const aliases = this.parseJson<string[]>(row.aliases_json);
 		const requires = this.parseJson<string[]>(row.requires_json);
 		const recommends = this.parseJson<string[]>(row.recommends_json);
+		const scope = this.parseScopeValue(row.scope);
 		const mtimeMs = this.toFiniteNumber(row.mtime_ms);
 
-		if (!rawFrontmatter || !frontmatter || !keywords || !tags || !aliases || !requires || !recommends || !Number.isFinite(mtimeMs)) {
+		if (
+			!rawFrontmatter ||
+			!frontmatter ||
+			!keywords ||
+			!tags ||
+			!aliases ||
+			!requires ||
+			!recommends ||
+			scope === null ||
+			!Number.isFinite(mtimeMs)
+		) {
 			return null;
 		}
 
@@ -558,6 +564,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 			id: row.skill_id,
 			canonicalName: row.canonical_name,
 			path: row.path,
+			scope,
 			sourceRoot: row.source_root,
 			rawFrontmatter,
 			frontmatter: {
@@ -688,6 +695,230 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		} catch {
 			return null;
 		}
+	}
+
+	private parseSettingsRow(value: string): Required<SkillRegistrySettings> | null {
+		const rawSettings = this.parseJson<unknown>(value);
+		if (!rawSettings) {
+			return null;
+		}
+		return this.normalizeSettings(rawSettings);
+	}
+
+	private normalizeSettings(value: unknown): Required<SkillRegistrySettings> | null {
+		if (!value || typeof value !== "object") {
+			return null;
+		}
+		const settings = value as Record<string, unknown>;
+		const roots = this.normalizeStringArray(settings.roots);
+		const scopeRoots = this.normalizeScopeRootsForMetadata(settings.scopeRoots);
+		const scopePriority = this.normalizeStringArray(settings.scopePriority);
+		const fileNames = this.normalizeStringArray(settings.fileNames);
+		const presetSkills = this.normalizeStringArray(settings.presetSkills);
+		const databasePath = this.normalizeDatabasePath(settings.databasePath);
+		const cacheTtlMs = this.toFiniteNumber(settings.cacheTtlMs);
+		const maxTopK = this.toFiniteNumber(settings.maxTopK);
+		const includePreviewBodyChars = this.toFiniteNumber(settings.includePreviewBodyChars);
+
+		if (!roots || !scopeRoots || !scopePriority || !fileNames || !presetSkills || !databasePath) {
+			return null;
+		}
+		if (
+			!this.isFinitePositiveInteger(cacheTtlMs) ||
+			!this.isFinitePositiveInteger(maxTopK) ||
+			!this.isFinitePositiveInteger(includePreviewBodyChars)
+		) {
+			return null;
+		}
+		return {
+			roots,
+			scopeRoots,
+			scopePriority,
+			fileNames,
+			presetSkills,
+			databasePath,
+			cacheTtlMs,
+			maxTopK,
+			includePreviewBodyChars,
+		};
+	}
+
+	private normalizeSettingsForScopeRoots(scopeRoots: Record<string, string[]>): Record<string, string[]> {
+		const normalized: Record<string, string[]> = {};
+		for (const [scopeName, roots] of Object.entries(scopeRoots)) {
+			normalized[scopeName] = roots.map((root) => this.normalizeScopeRoot(root));
+		}
+		return normalized;
+	}
+
+	private normalizeStringArray(value: unknown): string[] | null {
+		if (!this.isStringArray(value)) {
+			return null;
+		}
+		return value.map((entry) => entry);
+	}
+
+	private normalizeScopeRootsForMetadata(value: unknown): Record<string, string[]> | null {
+		if (!this.isRecordOfStringArrays(value)) {
+			return null;
+		}
+		return this.normalizeSettingsForScopeRoots(value);
+	}
+
+	private normalizeDatabasePath(value: unknown): string | null {
+		if (typeof value !== "string" || value.length === 0) {
+			return null;
+		}
+		return value;
+	}
+
+	private normalizeScopeRoot(value: string): string {
+		return path.isAbsolute(value) ? value : path.resolve(value);
+	}
+
+	private normalizeStatsForCache(value: unknown): SkillSearchIndexedStats | null {
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			return null;
+		}
+		const stats = value as Record<string, unknown>;
+		const scopeDistribution = this.normalizeScopeDistribution(stats.scopeDistribution);
+		if (scopeDistribution === undefined && stats.scopeDistribution !== undefined) {
+			return null;
+		}
+
+		if (
+			!this.isStringArray(stats.missingFromRequested) ||
+			!this.isDuplicateCanonicalEntries(stats.duplicateCanonicalEntries) ||
+			!this.isDuplicateAliasEntries(stats.duplicateAliasEntries)
+		) {
+			return null;
+		}
+		if (
+			!this.isFiniteInteger(stats.totalFilesVisited) ||
+			!this.isFiniteInteger(stats.totalParsed) ||
+			!this.isFiniteInteger(stats.skippedMissingRoot) ||
+			!this.isFiniteInteger(stats.parseErrors) ||
+			!this.isFiniteInteger(stats.deduplicated)
+		) {
+			return null;
+		}
+		if (
+			!Array.isArray(stats.malformedFiles) ||
+			!stats.malformedFiles.every((entry) => typeof entry?.path === "string" && typeof entry?.reason === "string")
+		) {
+			return null;
+		}
+		if (stats.nameFilterMode !== "targeted" && stats.nameFilterMode !== "full") {
+			return null;
+		}
+
+		const normalized: SkillSearchIndexedStats = {
+			missingFromRequested: stats.missingFromRequested,
+			duplicateCanonicalEntries: stats.duplicateCanonicalEntries,
+			duplicateAliasEntries: stats.duplicateAliasEntries,
+			totalFilesVisited: this.toFiniteNumber(stats.totalFilesVisited),
+			totalParsed: this.toFiniteNumber(stats.totalParsed),
+			skippedMissingRoot: this.toFiniteNumber(stats.skippedMissingRoot),
+			parseErrors: this.toFiniteNumber(stats.parseErrors),
+			deduplicated: this.toFiniteNumber(stats.deduplicated),
+			malformedFiles: stats.malformedFiles,
+			nameFilterMode: stats.nameFilterMode,
+		};
+		if (scopeDistribution !== undefined) {
+			normalized.scopeDistribution = scopeDistribution;
+		}
+
+		return normalized;
+	}
+
+	private normalizeScopeDistribution(value: unknown): Record<string, number> | undefined {
+		if (value === undefined || value === null) {
+			return undefined;
+		}
+		if (!this.isNumberMap(value)) {
+			return undefined;
+		}
+		return value;
+	}
+	private parseStatsRow(value: string): SkillSearchIndexedStats | null {
+		const stats = this.parseJson<unknown>(value);
+		return this.normalizeStatsForCache(stats);
+	}
+
+	private parseScopeValue(value: unknown): string | undefined | null {
+		if (value === null || typeof value === "undefined") {
+			return undefined;
+		}
+		if (typeof value !== "string") {
+			return null;
+		}
+		const trimmed = value.trim();
+		return trimmed.length === 0 ? undefined : trimmed;
+	}
+
+	private isFiniteInteger(value: unknown): boolean {
+		return Number.isFinite(Number(value)) && Number.isInteger(Number(value));
+	}
+
+	private isFinitePositiveInteger(value: unknown): boolean {
+		return this.isFiniteInteger(value) && Number(value) > 0;
+	}
+
+	private isStringArray(value: unknown): value is string[] {
+		return Array.isArray(value) && value.every((item) => typeof item === "string");
+	}
+
+	private isRecordOfStringArrays(value: unknown): value is Record<string, string[]> {
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			return false;
+		}
+		for (const [scopeName, scopeRoots] of Object.entries(value)) {
+			if (typeof scopeName !== "string") {
+				return false;
+			}
+			if (!this.isStringArray(scopeRoots)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private isDuplicateCanonicalEntries(value: unknown): value is Array<{ canonicalName: string; keptPath: string; droppedPath: string }> {
+		return (
+			Array.isArray(value) &&
+			value.every(
+				(entry) =>
+					typeof entry?.canonicalName === "string" &&
+					typeof entry?.keptPath === "string" &&
+					typeof entry?.droppedPath === "string",
+			)
+		);
+	}
+
+	private isDuplicateAliasEntries(
+		value: unknown,
+	): value is Array<{ alias: string; canonicalName: string; conflictingCanonicalName: string }> {
+		return (
+			Array.isArray(value) &&
+			value.every(
+				(entry) =>
+					typeof entry?.alias === "string" &&
+					typeof entry?.canonicalName === "string" &&
+					typeof entry?.conflictingCanonicalName === "string",
+			)
+		);
+	}
+
+	private isNumberMap(value: unknown): value is Record<string, number> {
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			return false;
+		}
+		for (const [scopeName, score] of Object.entries(value)) {
+			if (typeof scopeName !== "string" || typeof score !== "number" || !Number.isFinite(score)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private toFiniteNumber(value: unknown): number {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import type {
 	IndexArtifacts,
+	RawSkill,
 	SearchHit,
 	SkillApplyPacketResult,
 	SkillAuditReport,
@@ -48,6 +49,7 @@ type SelectedSkillPreview = {
 	path: string;
 	title: string;
 	category: string;
+	scope?: string;
 	aliases: string[];
 	requires: string[];
 	recommends: string[];
@@ -79,6 +81,38 @@ function boundResolveRecoveryText(text: string): string {
 	return characters.slice(0, best).join("");
 }
 
+/**
+ * 스코프 분포를 deterministic 정렬로 직렬화 가능한 맵으로 정규화합니다.
+ * 개별 결과 직렬화에는 scope를 주입하지 않고, 통계 집계용으로만 보완합니다.
+ */
+function buildDeterministicScopeDistribution(
+	skills: readonly RawSkill[],
+	scopeDistribution?: Record<string, number>,
+): Record<string, number> {
+	const base =
+		scopeDistribution && Object.keys(scopeDistribution).length > 0
+			? { ...scopeDistribution }
+			: (Object.create(null) as Record<string, number>);
+
+	if (Object.keys(base).length === 0) {
+		for (const skill of skills) {
+			if (!skill.scope) {
+				continue;
+			}
+			base[skill.scope] = (base[skill.scope] ?? 0) + 1;
+		}
+	}
+
+	const orderedEntries = Object.entries(base).sort(([scopeA, countA], [scopeB, countB]) =>
+		countA === countB ? scopeA.localeCompare(scopeB) : countB - countA,
+	);
+	const normalized: Record<string, number> = {};
+	for (const [scope, count] of orderedEntries) {
+		normalized[scope] = count;
+	}
+	return normalized;
+}
+
 /** retrospective telemetry snapshot을 구성합니다. */
 function buildComplaintTelemetrySnapshot(
 	input: ToolContext,
@@ -104,7 +138,11 @@ function buildComplaintTelemetrySnapshot(
 /** index action 결과를 구성합니다. */
 export function buildIndexResult(index: IndexArtifacts, limit: number): SkillRegistryToolResult {
 	const top = index.skills.slice(0, limit);
-	const rows = top.map((entry) => `${entry.canonicalName}\t${entry.category}\t${entry.sourceRoot}`);
+	const scopeDistribution = buildDeterministicScopeDistribution(
+		index.skills,
+		(index.stats as { scopeDistribution?: Record<string, number> }).scopeDistribution,
+	);
+	const rows = top.map((entry) => `${entry.canonicalName}\t${entry.category}\t${entry.scope ?? "-"}\t${entry.sourceRoot}`);
 	const summary = [
 		`indexed: ${index.docCount}`,
 		`queried roots: ${index.settings.roots.length}`,
@@ -123,7 +161,7 @@ export function buildIndexResult(index: IndexArtifacts, limit: number): SkillReg
 					"skill_registry index 완료",
 					summary.join(" | "),
 					"",
-					"name\tcategory\tsource",
+					"name\tcategory\tscope\tsource",
 					rows.length ? rows.join("\n") : "(검색 후보 없음)",
 				].join("\n"),
 			},
@@ -133,6 +171,7 @@ export function buildIndexResult(index: IndexArtifacts, limit: number): SkillReg
 			docCount: index.docCount,
 			requestedNames: index.requestedNames,
 			missingFromRequested: index.stats.missingFromRequested,
+			byScope: scopeDistribution,
 			stats: index.stats,
 			indexBuildMs: index.indexBuildMs,
 			time: new Date(index.generatedAt).toISOString(),
@@ -153,6 +192,7 @@ export function buildDiscoverResult(
 		score: hit.score,
 		coverage: hit.coverage,
 		category: hit.skill.category,
+		scope: hit.skill.scope,
 		aliases: hit.skill.aliases,
 		requires: hit.skill.requires,
 		recommends: hit.skill.recommends,
@@ -167,6 +207,7 @@ export function buildDiscoverResult(
 			`${rank + 1}. ${entry.name} -> ${entry.readPath}`,
 			`   why: score ${entry.score.toFixed(3)}, coverage ${entry.coverage}, matched ${entry.matchedTerms.join(", ") || "없음"}`,
 			`   category: ${entry.category}`,
+			`   scope: ${entry.scope ?? "-"}`,
 			entry.aliases.length ? `   aliases: ${entry.aliases.join(", ")}` : "",
 			entry.requires.length || entry.recommends.length
 				? `   related: requires=${entry.requires.join(", ") || "-"} | recommends=${entry.recommends.join(", ") || "-"}`
@@ -227,6 +268,7 @@ export function buildSearchResult(
 			`${rank + 1}. ${hit.skill.canonicalName} (score ${hit.score.toFixed(3)}, coverage ${hit.coverage})`,
 			`   matched: ${hit.matchedTerms.join(", ") || "없음"}`,
 			`   category: ${hit.skill.category}`,
+			`   scope: ${hit.skill.scope ?? "-"}`,
 			hit.skill.aliases.length ? `   aliases: ${hit.skill.aliases.join(", ")}` : "",
 			hit.skill.requires.length || hit.skill.recommends.length
 				? `   related: requires=${hit.skill.requires.join(", ") || "-"} | recommends=${hit.skill.recommends.join(", ") || "-"}`
@@ -271,6 +313,8 @@ export function buildSearchResult(
 				score: hit.score,
 				coverage: hit.coverage,
 				path: hit.skill.path,
+				scope: hit.skill.scope,
+				category: hit.skill.category,
 			})),
 			diagnostics,
 			telemetry,
@@ -291,6 +335,7 @@ export function buildSelectResult(index: IndexArtifacts, hits: SearchHit[], inpu
 			path: hit.skill.path,
 			title: hit.skill.title,
 			category: hit.skill.category,
+			scope: hit.skill.scope,
 			aliases: hit.skill.aliases,
 			requires: hit.skill.requires,
 			recommends: hit.skill.recommends,
@@ -309,6 +354,7 @@ export function buildSelectResult(index: IndexArtifacts, hits: SearchHit[], inpu
 			`   score=${entry.score.toFixed(3)} coverage=${entry.coverage}`,
 			`   path=${entry.path}`,
 			`   title=${entry.title}`,
+			`   scope=${entry.scope ?? "-"}`,
 			entry.aliases.length ? `   aliases=${entry.aliases.join(", ")}` : "",
 			entry.requires.length || entry.recommends.length
 				? `   related=requires:${entry.requires.join(", ") || "-"} | recommends:${entry.recommends.join(", ") || "-"}`
@@ -355,6 +401,7 @@ export function buildComposeResult(index: IndexArtifacts, plan: SkillComposePlan
 		depth: entry.depth,
 		title: entry.skill.title,
 		category: entry.skill.category,
+		scope: entry.skill.scope,
 		path: entry.skill.path,
 		aliases: entry.skill.aliases,
 		requires: entry.skill.requires,
@@ -368,6 +415,7 @@ export function buildComposeResult(index: IndexArtifacts, plan: SkillComposePlan
 			`${idx + 1}. ${entry.name} -> ${entry.readPath}`,
 			`   reason: ${entry.reason}${entry.via ? ` via ${entry.via}` : ""} | depth ${entry.depth}`,
 			`   category: ${entry.category}`,
+			`   scope: ${entry.scope ?? "-"}`,
 			entry.aliases.length ? `   aliases: ${entry.aliases.join(", ")}` : "",
 			entry.requires.length || entry.recommends.length
 				? `   related: requires=${entry.requires.join(", ") || "-"} | recommends=${entry.recommends.join(", ") || "-"}`
@@ -1703,6 +1751,13 @@ export function buildMetricsResult(index: IndexArtifacts): SkillRegistryToolResu
 		index.skills.length === 0
 			? 0
 			: Math.round(index.skills.reduce((sum, skill) => sum + skill.bodyText.length, 0) / index.skills.length);
+	const byScope = buildDeterministicScopeDistribution(
+		index.skills,
+		(index.stats as { scopeDistribution?: Record<string, number> }).scopeDistribution,
+	);
+	const sortedScopes = Object.entries(byScope)
+		.slice(0, 20)
+		.map(([scope, count]) => `${scope}: ${count}`);
 	return {
 		content: [
 			{
@@ -1720,6 +1775,7 @@ export function buildMetricsResult(index: IndexArtifacts): SkillRegistryToolResu
 						.map(([root, count]) => `${path.basename(root)}=${count}`)
 						.join(", ")}`,
 					sortedCategories ? `top categories: ${sortedCategories}` : "top categories: -",
+					sortedScopes.length ? `top scopes: ${sortedScopes.join(", ")}` : "top scopes: -",
 					topTerms ? `top terms: ${topTerms}` : "top terms: -",
 					`index built at: ${new Date(index.generatedAt).toISOString()}`,
 					`index build ms: ${index.indexBuildMs}`,
@@ -1743,6 +1799,7 @@ export function buildMetricsResult(index: IndexArtifacts): SkillRegistryToolResu
 			},
 			byCategory,
 			byRoot: rootCounts,
+			byScope,
 			relationCounts,
 			topTerms: topTerms ? topTerms.split(", ") : [],
 			malformedFiles: index.stats.malformedFiles,

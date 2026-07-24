@@ -6,6 +6,8 @@ import type { SkillRelationEngine } from "./skill-relation-engine";
 function makeSettings() {
 	return {
 		roots: ["./skills"],
+		scopeRoots: {},
+		scopePriority: [],
 		fileNames: ["SKILL.md"],
 		presetSkills: [],
 		databasePath: "/tmp/skill-registry-diagnostics.sqlite",

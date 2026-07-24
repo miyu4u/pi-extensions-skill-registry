@@ -9,6 +9,7 @@ import {
 	SkillInputNormalizer,
 	SkillReadPacketBuilder,
 	SkillRelationEngine,
+	SkillScopeResolverService,
 	SkillSearchDatabaseService,
 	SkillSearchEngine,
 } from "./indexing";
@@ -28,7 +29,8 @@ const skillReadResultCompactor = new SkillReadResultCompactorService();
 export const createSkillSearchDatabaseService = (): SkillSearchDatabaseService => new SkillSearchDatabaseService();
 
 const skillSearchDatabase = createSkillSearchDatabaseService();
-const skillInputNormalizer = new SkillInputNormalizer(settingsLoader);
+const skillScopeResolver = new SkillScopeResolverService();
+const skillInputNormalizer = new SkillInputNormalizer(settingsLoader, skillScopeResolver);
 const skillFileScanner = new SkillFileScanner();
 const skillDocumentParser = new SkillDocumentParser();
 const activeIndexStore = new ActiveIndexStore();
@@ -44,8 +46,8 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillFileScanner,
 	skillDocumentParser,
 	activeIndexStore,
+	skillScopeResolver,
 );
-
 export const SERVICE = {
 	settingsLoader,
 	englishFuzzyMatcher,
@@ -64,4 +66,5 @@ export const SERVICE = {
 	skillDecisionEngine,
 	skillReadPacketBuilder,
 	skillExecutionPacketBuilder,
+	skillScopeResolver,
 } as const;

@@ -15,6 +15,8 @@ type SettingPayload = {
 	maxTopK?: number;
 	includePreviewBodyChars?: number;
 	databasePath?: string;
+	scopeRoots?: unknown;
+	scopePriority?: unknown;
 };
 
 /** settings loader service 동작 검증입니다. */
@@ -204,5 +206,75 @@ describe("settings loader service", () => {
 		const settings = loader.loadSettings();
 
 		expect(settings.databasePath).toBe(path.join(os.homedir(), ".omp", "agent", "cache", "skill-registry", "index.sqlite"));
+	});
+
+	test("uses default scope roots and scope priority if omitted", () => {
+		setupProject();
+		const settings = loader.loadSettings();
+		expect(settings.scopeRoots).toEqual({
+			"user-authored:local": [process.cwd()],
+			"user-authored:global": [os.homedir()],
+			"managed-skills": [path.join(os.homedir(), ".omp", "managed-skills")],
+		});
+		expect(settings.scopePriority).toEqual(["user-authored:local", "user-authored:global", "managed-skills"]);
+	});
+
+	test("loads custom future scopes and merges them with default scope roots", () => {
+		setupProject();
+		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
+			scopeRoots: {
+				"future-scope": ["./future-skills", "~/global-future"],
+			},
+		});
+
+		const settings = loader.loadSettings();
+		expect(settings.scopeRoots["future-scope"]).toEqual(["./future-skills", path.join(os.homedir(), "global-future")]);
+		expect(settings.scopeRoots["user-authored:local"]).toEqual([process.cwd()]);
+	});
+
+	test("flattens custom scopes to append to legacy roots if roots is omitted", () => {
+		setupProject();
+		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
+			scopeRoots: {
+				"future-scope": ["./future-skills"],
+			},
+		});
+
+		const settings = loader.loadSettings();
+		expect(settings.roots).toContain("./future-skills");
+		for (const legacyRoot of DEFAULT_SETTINGS.roots) {
+			const expected = legacyRoot.startsWith("~") ? path.join(os.homedir(), legacyRoot.slice(1)) : legacyRoot;
+			expect(settings.roots).toContain(expected);
+		}
+	});
+
+	test("falls back to default scopePriority when containing non-string items", () => {
+		setupProject();
+		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
+			scopePriority: ["custom-scope", "", "custom-scope", 123],
+		});
+
+		const settings = loader.loadSettings();
+		expect(settings.scopePriority).toEqual(["user-authored:local", "user-authored:global", "managed-skills"]);
+	});
+
+	test("filters out empty strings and dedupes valid scope names in scopePriority", () => {
+		setupProject();
+		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
+			scopePriority: ["custom-scope", "  ", "custom-scope", "other-scope"],
+		});
+
+		const settings = loader.loadSettings();
+		expect(settings.scopePriority).toEqual(["custom-scope", "other-scope"]);
+	});
+
+	test("accepts valid custom scopePriority list", () => {
+		setupProject();
+		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
+			scopePriority: ["managed-skills", "user-authored:local"],
+		});
+
+		const settings = loader.loadSettings();
+		expect(settings.scopePriority).toEqual(["managed-skills", "user-authored:local"]);
 	});
 });

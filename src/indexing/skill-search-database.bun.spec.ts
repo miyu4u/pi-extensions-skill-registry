@@ -1,9 +1,10 @@
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import { createSkillSearchDatabaseService } from "../service-registry";
-import type { IndexedStats, RawSkill } from "../shared";
-import type { SkillSearchDocument, SkillSearchSnapshotInput } from "./skill-search-database.interface";
+import type { RawSkill, SkillRegistrySettings } from "../shared";
+import type { SkillSearchDocument, SkillSearchIndexedStats, SkillSearchSnapshotInput } from "./skill-search-database.interface";
 import type { SkillSearchDatabaseService } from "./skill-search-database.service";
 
 const SKIP_PATH = path.join(process.cwd(), ".tmp-skill-registry-search-db-bun-");
@@ -20,9 +21,15 @@ function closeDb(service: SkillSearchDatabaseService): void {
 	}
 }
 
-function makeSettings(databasePath: string) {
+function makeSettings(
+	databasePath: string,
+	scopeRoots: Record<string, string[]> = {},
+	scopePriority: string[] = [],
+): Required<SkillRegistrySettings> {
 	return {
 		roots: ["./skills"],
+		scopeRoots,
+		scopePriority,
 		fileNames: ["SKILL.md"],
 		presetSkills: [],
 		databasePath,
@@ -32,7 +39,7 @@ function makeSettings(databasePath: string) {
 	};
 }
 
-function makeStats(): IndexedStats {
+function makeStats(scopeDistribution?: Record<string, number>): SkillSearchIndexedStats {
 	return {
 		totalFilesVisited: 1,
 		totalParsed: 1,
@@ -44,6 +51,7 @@ function makeStats(): IndexedStats {
 		duplicateCanonicalEntries: [],
 		duplicateAliasEntries: [],
 		nameFilterMode: "full",
+		scopeDistribution,
 	};
 }
 
@@ -61,6 +69,7 @@ function makeSkill(params: {
 	requires?: string[];
 	recommends?: string[];
 	mtimeMs?: number;
+	scope?: string;
 }): RawSkill {
 	const {
 		id,
@@ -76,12 +85,14 @@ function makeSkill(params: {
 		requires = [],
 		recommends = [],
 		mtimeMs = Date.now(),
+		scope = "unclassified",
 	} = params;
 	return {
 		id,
 		canonicalName,
 		path: id,
 		sourceRoot,
+		scope,
 		rawFrontmatter: {
 			name: canonicalName,
 			description,
@@ -130,15 +141,17 @@ function makeInput(
 	skills: RawSkill[],
 	buildStartedAt: number,
 	ttlMs = 60_000,
+	settings?: Required<SkillRegistrySettings>,
+	stats?: SkillSearchIndexedStats,
 ): SkillSearchSnapshotInput {
 	return {
 		generatedAt: Date.now(),
 		ttlMs,
 		requestKey,
-		settings: makeSettings(dbPath),
+		settings: settings ?? makeSettings(dbPath),
 		requestedNames: [],
 		skills,
-		stats: makeStats(),
+		stats: stats ?? makeStats(),
 		buildStartedAt,
 	};
 }
@@ -189,5 +202,195 @@ describe("skill-search-database service bun smoke", () => {
 		expect(restored).not.toBeNull();
 		expect(restored?.skills[0]).toEqual(seed);
 		expect(restored?.settings.databasePath).toBe(path.resolve(databasePath));
+	});
+
+	test("proves scope column/snapshot restore and settings/stats round-trip via bun:sqlite", async () => {
+		root = createRoot();
+		const databasePath = path.join(root, "scope-roundtrip.sqlite");
+		await service.initialize(databasePath);
+
+		const localSkill = makeSkill({
+			id: "s-local",
+			canonicalName: "local-skill",
+			sourceRoot: root,
+			description: "Local scope skill",
+			bodyText: "Body text.",
+			title: "local-skill",
+		});
+		localSkill.scope = "user-authored:local";
+
+		const managedSkill = makeSkill({
+			id: "s-managed",
+			canonicalName: "managed-skill",
+			sourceRoot: root,
+			description: "Managed scope skill",
+			bodyText: "Body text.",
+			title: "managed-skill",
+		});
+		managedSkill.scope = "managed-skills";
+
+		const unclassifiedSkill1 = makeSkill({
+			id: "s-unclassified-1",
+			canonicalName: "unclassified-skill-1",
+			sourceRoot: root,
+			description: "Unclassified scope skill 1",
+			bodyText: "Body text.",
+			title: "unclassified-skill-1",
+		});
+
+		const unclassifiedSkill2 = makeSkill({
+			id: "s-unclassified-2",
+			canonicalName: "unclassified-skill-2",
+			sourceRoot: root,
+			description: "Unclassified scope skill 2",
+			bodyText: "Body text.",
+			title: "unclassified-skill-2",
+		});
+
+		const skills = [localSkill, managedSkill, unclassifiedSkill1, unclassifiedSkill2];
+		const docs = skills.map(makeDocument);
+
+		const scopeRoots = {
+			"user-authored:local": [path.resolve(root, "skills/local")],
+			"managed-skills": [path.resolve(root, "skills/managed")],
+		};
+		const scopePriority = ["user-authored:local", "managed-skills"];
+		const settings = makeSettings(databasePath, scopeRoots, scopePriority);
+
+		const scopeDistribution = {
+			"user-authored:local": 1,
+			"managed-skills": 1,
+			unclassified: 2,
+		};
+		const stats = makeStats(scopeDistribution);
+
+		const input = makeInput(databasePath, "request:scope-test", skills, Date.now() - 40, 60_000, settings, stats);
+		const snapshot = service.replaceSnapshot(input, docs);
+
+		expect(snapshot.skills[0].scope).toBe("user-authored:local");
+		expect(snapshot.skills[1].scope).toBe("managed-skills");
+		expect(snapshot.skills[2].scope).toBe("unclassified");
+		expect(snapshot.skills[3].scope).toBe("unclassified");
+		expect(snapshot.settings.scopeRoots).toEqual(scopeRoots);
+		expect(snapshot.settings.scopePriority).toEqual(scopePriority);
+		expect(snapshot.stats.scopeDistribution).toEqual(scopeDistribution);
+
+		closeDb(service);
+		service = createSkillSearchDatabaseService();
+		await service.initialize(databasePath);
+
+		const restored = service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1);
+		expect(restored).not.toBeNull();
+		if (!restored) {
+			throw new Error("restored is null");
+		}
+
+		expect(restored.skills[0].scope).toBe("user-authored:local");
+		expect(restored.skills[1].scope).toBe("managed-skills");
+		expect(restored.skills[2].scope).toBe("unclassified");
+		expect(restored.skills[3].scope).toBe("unclassified");
+		expect(restored.settings.scopeRoots).toEqual(scopeRoots);
+		expect(restored.settings.scopePriority).toEqual(scopePriority);
+		expect(restored.stats.scopeDistribution).toEqual(scopeDistribution);
+	});
+
+	test("proves request identity isolation where observable via bun:sqlite", async () => {
+		root = createRoot();
+		const databasePath = path.join(root, "isolation.sqlite");
+		await service.initialize(databasePath);
+
+		const skill = makeSkill({
+			id: "iso-1",
+			canonicalName: "isolation-test",
+			sourceRoot: root,
+			description: "iso",
+			bodyText: "iso body",
+			title: "iso",
+		});
+
+		const snapshotA = service.replaceSnapshot(makeInput(databasePath, "request:A", [skill], Date.now() - 40), [makeDocument(skill)]);
+
+		const restoredB = service.readSnapshot("request:B", snapshotA.generatedAt + 1);
+		expect(restoredB).toBeNull();
+
+		const restoredA = service.readSnapshot("request:A", snapshotA.generatedAt + 1);
+		expect(restoredA).not.toBeNull();
+		expect(restoredA?.requestKey).toBe("request:A");
+	});
+
+	test("recreates owned schema if user_version is old/different but application_id matches via bun:sqlite", async () => {
+		root = createRoot();
+		const databasePath = path.join(root, "recreate-schema.sqlite");
+
+		const setupDb = new Database(databasePath);
+		setupDb.run("PRAGMA application_id = 1397445191;");
+		setupDb.run("PRAGMA user_version = 2;");
+		setupDb.run(`CREATE TABLE cache_metadata (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			snapshot_token TEXT NOT NULL,
+			request_key TEXT NOT NULL,
+			generated_at INTEGER NOT NULL,
+			ttl_ms INTEGER NOT NULL,
+			settings_json TEXT NOT NULL,
+			requested_names_json TEXT NOT NULL,
+			stats_json TEXT NOT NULL,
+			index_build_ms INTEGER NOT NULL
+		);`);
+		setupDb.run("INSERT INTO cache_metadata VALUES (1, 'old-token', 'req-old', 123, 456, '{}', '[]', '{}', 0);");
+		setupDb.close();
+
+		await service.initialize(databasePath);
+
+		const checkDb = new Database(databasePath);
+		const rows = checkDb.query("SELECT * FROM cache_metadata;").all();
+		expect(rows).toHaveLength(0); // must be dropped and recreated empty
+
+		const userVersion = checkDb.query("PRAGMA user_version;").get();
+		let uvValue = 0;
+		if (userVersion && typeof userVersion === "object") {
+			if ("user_version" in userVersion) {
+				uvValue = Number(userVersion.user_version);
+			} else if ("value" in userVersion) {
+				uvValue = Number(userVersion.value);
+			}
+		}
+		expect(uvValue).toBe(3);
+		checkDb.close();
+	});
+
+	test("invalid scope metadata triggers schema recreation and returns null via bun:sqlite", async () => {
+		root = createRoot();
+		const databasePath = path.join(root, "invalid-scope.sqlite");
+		await service.initialize(databasePath);
+
+		const skill = makeSkill({
+			id: "s-invalid",
+			canonicalName: "invalid-skill",
+			sourceRoot: root,
+			description: "Invalid scope skill",
+			bodyText: "Body text.",
+			title: "invalid-skill",
+		});
+
+		const snapshot = service.replaceSnapshot(makeInput(databasePath, "request:invalid", [skill], Date.now() - 40), [
+			makeDocument(skill),
+		]);
+
+		closeDb(service);
+
+		const corruptDb = new Database(databasePath);
+		corruptDb.run("UPDATE skills SET scope = X'2A' WHERE skill_id = 's-invalid';");
+		corruptDb.close();
+
+		service = createSkillSearchDatabaseService();
+		await service.initialize(databasePath);
+
+		const restored = service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1);
+		expect(restored).toBeNull();
+
+		const checkDb = new Database(databasePath);
+		const rows = checkDb.query("SELECT * FROM cache_metadata;").all();
+		expect(rows).toHaveLength(0);
+		checkDb.close();
 	});
 });

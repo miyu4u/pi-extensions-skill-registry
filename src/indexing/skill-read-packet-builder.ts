@@ -8,13 +8,10 @@ import type {
 	SkillPack,
 	SkillPackEntry,
 	SkillRecoveryPacketResult,
-	SkillRecoveryPacketTurn,
 	SkillRelationMode,
 	SkillResumePacketResult,
 	SkillSessionPacketResult,
-	SkillSessionPacketStep,
 	SkillTurnPacketResult,
-	SkillTurnPacketTurn,
 } from "../shared";
 import { composeReasonPriority } from "./compose-reason-priority";
 import type { SkillDecisionEngine } from "./skill-decision-engine";
@@ -78,6 +75,7 @@ export class SkillReadPacketBuilder {
 					path: packEntry.path,
 					title: packEntry.title,
 					category: packEntry.category,
+					scope: packEntry.scope,
 					preview: packEntry.preview,
 					body: packEntry.body,
 					omittedByBudget: packEntry.omittedByBudget,
@@ -152,6 +150,8 @@ export class SkillReadPacketBuilder {
 			winner: bundle.winner,
 			ready: bundle.ready,
 			sourcePath,
+			sourceCategory: winnerEntry?.category,
+			sourceScope: winnerEntry?.scope,
 			nextCommand,
 			applyHint: bundle.ready ? undefined : "Increase budgetChars/budgetTokens or inspect omittedReadPaths before apply.",
 			phases: bundle.phases,
@@ -179,10 +179,14 @@ export class SkillReadPacketBuilder {
 		const handoff = this.handoffSkills(index, query, names, relationMode, budgetChars, budgetTokens, limit, minScore);
 		const sourcePaths = handoff.entries.map((entry) => entry.path);
 		const nextCommands = sourcePaths.map((sourcePath) => `read("${sourcePath}")`);
-		const steps: SkillSessionPacketStep[] = handoff.entries.map((entry, indexPosition) => ({
+		const sourcePathScopes = handoff.entries.map((entry) => entry.scope);
+		const sourcePathCategories = handoff.entries.map((entry) => entry.category);
+		const steps = handoff.entries.map((entry, indexPosition) => ({
 			order: indexPosition + 1,
 			name: entry.name,
 			sourcePath: entry.path,
+			sourceScope: entry.scope,
+			sourceCategory: entry.category,
 			nextCommand: `read("${entry.path}")`,
 			phaseKind: entry.phaseKind,
 			layer: entry.layer,
@@ -195,6 +199,8 @@ export class SkillReadPacketBuilder {
 			winner: handoff.winner,
 			ready: handoff.ready,
 			sourcePaths,
+			sourcePathScopes,
+			sourcePathCategories,
 			nextCommands,
 			applyHint: handoff.applyHint,
 			recoveryGuidance: handoff.ready
@@ -221,10 +227,12 @@ export class SkillReadPacketBuilder {
 		minScore = 0,
 	): SkillTurnPacketResult {
 		const handoff = this.handoffSkills(index, query, names, relationMode, budgetChars, budgetTokens, limit, minScore);
-		const turns: SkillTurnPacketTurn[] = handoff.phases.map((phase) => {
+		const turns = handoff.phases.map((phase) => {
 			const phaseEntries = handoff.entries.filter((entry) => entry.phaseOrder === phase.order);
 			const sourcePaths = phaseEntries.map((entry) => entry.path);
 			const nextCommands = sourcePaths.map((sourcePath) => `read("${sourcePath}")`);
+			const sourcePathScopes = phaseEntries.map((entry) => entry.scope);
+			const sourcePathCategories = phaseEntries.map((entry) => entry.category);
 			const blockedByBudget = phaseEntries.some((entry) => entry.omittedByBudget);
 			const objective =
 				phase.kind === "start"
@@ -257,6 +265,8 @@ export class SkillReadPacketBuilder {
 				checklist,
 				exitCriteria,
 				blockedByBudget,
+				sourcePathScopes,
+				sourcePathCategories,
 			};
 		});
 		const sourcePaths = turns.flatMap((turn) => turn.sourcePaths);
@@ -268,6 +278,8 @@ export class SkillReadPacketBuilder {
 			winner: handoff.winner,
 			ready: handoff.ready,
 			sourcePaths,
+			sourcePathScopes: turns.flatMap((turn) => turn.sourcePathScopes ?? []),
+			sourcePathCategories: turns.flatMap((turn) => turn.sourcePathCategories ?? []),
 			nextCommands,
 			applyHint: handoff.applyHint,
 			recoveryGuidance: handoff.ready
@@ -297,28 +309,30 @@ export class SkillReadPacketBuilder {
 		minScore = 0,
 	): SkillRecoveryPacketResult {
 		const handoff = this.handoffSkills(index, query, names, relationMode, budgetChars, budgetTokens, limit, minScore);
-		const blockedTurns: SkillRecoveryPacketTurn[] = handoff.phases
-			.map((phase) => {
-				const omittedEntries = handoff.entries.filter((entry) => entry.phaseOrder === phase.order && entry.omittedByBudget);
-				if (omittedEntries.length === 0) {
-					return null;
-				}
-				const omittedReadPaths = omittedEntries.map((entry) => entry.readPath);
-				const sourcePaths = omittedEntries.map((entry) => entry.path);
-				const recoveryCommands = sourcePaths.map((sourcePath) => `read("${sourcePath}")`);
-				const objective =
-					phase.kind === "start"
-						? `Recover winner ${phase.names[0] ?? "-"} before continuing`
-						: phase.kind === "read-layer"
-							? `Recover required layer ${phase.layer ?? "-"} before dependent peers`
-							: phase.kind === "apply-layer"
-								? `Recover optional apply layer ${phase.layer ?? "-"} before extension work`
-								: "Recover fallback steps before resuming";
-				const unblockCriteria = [
-					`Read omitted skill bodies: ${omittedReadPaths.join(", ")}`,
-					recoveryCommands.length ? `Open source files: ${recoveryCommands.join(" -> ")}` : undefined,
-				].filter((item): item is string => Boolean(item));
-				return {
+		const blockedTurns = handoff.phases.flatMap((phase) => {
+			const omittedEntries = handoff.entries.filter((entry) => entry.phaseOrder === phase.order && entry.omittedByBudget);
+			if (omittedEntries.length === 0) {
+				return [];
+			}
+			const omittedReadPaths = omittedEntries.map((entry) => entry.readPath);
+			const sourcePaths = omittedEntries.map((entry) => entry.path);
+			const recoveryCommands = sourcePaths.map((sourcePath) => `read("${sourcePath}")`);
+			const sourcePathScopes = omittedEntries.map((entry) => entry.scope);
+			const sourcePathCategories = omittedEntries.map((entry) => entry.category);
+			const objective =
+				phase.kind === "start"
+					? `Recover winner ${phase.names[0] ?? "-"} before continuing`
+					: phase.kind === "read-layer"
+						? `Recover required layer ${phase.layer ?? "-"} before dependent peers`
+						: phase.kind === "apply-layer"
+							? `Recover optional apply layer ${phase.layer ?? "-"} before extension work`
+							: "Recover fallback steps before resuming";
+			const unblockCriteria = [
+				`Read omitted skill bodies: ${omittedReadPaths.join(", ")}`,
+				recoveryCommands.length ? `Open source files: ${recoveryCommands.join(" -> ")}` : undefined,
+			].filter((item): item is string => Boolean(item));
+			return [
+				{
 					order: phase.order,
 					phaseKind: phase.kind,
 					layer: phase.layer,
@@ -326,11 +340,13 @@ export class SkillReadPacketBuilder {
 					omittedReadPaths,
 					sourcePaths,
 					recoveryCommands,
+					sourcePathScopes,
+					sourcePathCategories,
 					objective,
 					unblockCriteria,
-				};
-			})
-			.filter((turn): turn is SkillRecoveryPacketTurn => Boolean(turn));
+				},
+			];
+		});
 		const sourcePaths = blockedTurns.flatMap((turn) => turn.sourcePaths);
 		const recoveryCommands = blockedTurns.flatMap((turn) => turn.recoveryCommands);
 		return {
@@ -348,6 +364,8 @@ export class SkillReadPacketBuilder {
 					],
 			omittedReadPaths: handoff.omittedReadPaths,
 			sourcePaths,
+			sourcePathScopes: blockedTurns.flatMap((turn) => turn.sourcePathScopes ?? []),
+			sourcePathCategories: blockedTurns.flatMap((turn) => turn.sourcePathCategories ?? []),
 			recoveryCommands,
 			deferred: handoff.deferred,
 			resumeTurnOrder: blockedTurns[0]?.order ?? null,
@@ -375,6 +393,8 @@ export class SkillReadPacketBuilder {
 		const turns = resumeTurnOrder === null ? [] : turnPacket.turns.filter((turn) => turn.order >= resumeTurnOrder);
 		const sourcePaths = turns.flatMap((turn) => turn.sourcePaths);
 		const nextCommands = turns.flatMap((turn) => turn.nextCommands);
+		const sourcePathScopes = turns.flatMap((turn) => turn.sourcePathScopes ?? []);
+		const sourcePathCategories = turns.flatMap((turn) => turn.sourcePathCategories ?? []);
 		return {
 			query: turnPacket.query,
 			basis: turnPacket.basis,
@@ -387,6 +407,8 @@ export class SkillReadPacketBuilder {
 			recoveryCommands: recoveryPacket.recoveryCommands,
 			sourcePaths,
 			nextCommands,
+			sourcePathScopes,
+			sourcePathCategories,
 			deferred: turnPacket.deferred,
 			resumeTurnOrder,
 			budget: turnPacket.budget,
@@ -410,6 +432,8 @@ export class SkillReadPacketBuilder {
 	): SkillCurrentTurnPacketResult {
 		const resumePacket = this.resumePacketSkills(index, query, names, relationMode, budgetChars, budgetTokens, limit, minScore);
 		const turn = resumePacket.turns[0] ?? null;
+		const currentTurnSourcePathScopes = turn ? (turn.sourcePathScopes ?? []) : [];
+		const currentTurnSourcePathCategories = turn ? (turn.sourcePathCategories ?? []) : [];
 		return {
 			query: resumePacket.query,
 			basis: resumePacket.basis,
@@ -421,6 +445,8 @@ export class SkillReadPacketBuilder {
 			omittedReadPaths: resumePacket.omittedReadPaths,
 			recoveryCommands: resumePacket.recoveryCommands,
 			sourcePaths: turn?.sourcePaths ?? [],
+			sourcePathScopes: currentTurnSourcePathScopes,
+			sourcePathCategories: currentTurnSourcePathCategories,
 			nextCommands: turn?.nextCommands ?? [],
 			deferred: resumePacket.deferred,
 			activeTurnOrder: turn?.order ?? null,
@@ -457,6 +483,7 @@ export class SkillReadPacketBuilder {
 				path: skill.path,
 				title: skill.title,
 				category: skill.category,
+				scope: skill.scope,
 				aliases: skill.aliases,
 				requires: skill.requires,
 				recommends: skill.recommends,
