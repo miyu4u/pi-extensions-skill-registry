@@ -82,6 +82,20 @@ export const SKILL_REGISTRY_SETTINGS_FILE = "skill-registry.json";
 /** OMP runtime settings root 후보를 위한 파일명입니다. */
 export const SKILL_REGISTRY_SETTINGS_FILE_PATHS = [".pi/settings/skill-registry", ".pi/settings"] as const;
 
+/** 범위별 기본 skill-root 후보를 정의합니다.
+ * local: 현재 작업공간 기준 루트입니다.
+ * global: 홈 디렉터리 기준 Agent 루트를 우선 탐색합니다.
+ * managed: 관리형 skill 저장소 경로를 마지막에 보강합니다.
+ */
+export const DEFAULT_SCOPE_ROOTS = {
+	"user-authored:local": ["$cwd"],
+	"user-authored:global": ["$home"],
+	"managed-skills": ["~/.omp/managed-skills"],
+} as const;
+
+/** scopeRoot 병합 우선순위를 정의합니다. */
+export const DEFAULT_SCOPE_PRIORITY = ["user-authored:local", "user-authored:global", "managed-skills"] as const;
+
 /** 정적 skill-registry 기본 설정입니다. database path는 runtime 환경에서 계산합니다. */
 export const DEFAULT_SETTINGS = {
 	roots: [
@@ -90,8 +104,8 @@ export const DEFAULT_SETTINGS = {
 		".agents/skills",
 		"~/.pi/agent/skills",
 		"~/.omp/agent/skills",
-		"~/.omp/agent/managed-skills",
 		"~/.agents/skills",
+		"~/.omp/managed-skills",
 	],
 	fileNames: DEFAULT_FILE_NAMES,
 	presetSkills: [],

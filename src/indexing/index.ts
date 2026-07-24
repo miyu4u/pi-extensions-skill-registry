@@ -8,6 +8,8 @@ export * from "./skill-index-loader";
 export * from "./skill-input-normalizer";
 export * from "./skill-read-packet-builder";
 export * from "./skill-relation-engine";
+export * from "./skill-scope-resolver.interface";
+export * from "./skill-scope-resolver.service";
 export * from "./skill-search-database.interface";
 export * from "./skill-search-database.service";
 export * from "./skill-search-engine";

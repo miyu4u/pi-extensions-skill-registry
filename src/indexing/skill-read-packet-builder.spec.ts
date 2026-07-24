@@ -18,6 +18,8 @@ type FixturePackRow = {
 function makeSettings() {
 	return {
 		roots: ["./skills"],
+		scopeRoots: {},
+		scopePriority: [],
 		fileNames: ["SKILL.md"],
 		presetSkills: [],
 		databasePath: "/tmp/skill-registry-read-packet.sqlite",

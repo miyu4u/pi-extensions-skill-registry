@@ -180,6 +180,8 @@ describe("main entrypoint integration", () => {
 				requestKey: "",
 				settings: {
 					roots: [],
+					scopeRoots: {},
+					scopePriority: [],
 					fileNames: [],
 					maxTopK: 100,
 					cacheTtlMs: 0,
@@ -243,5 +245,71 @@ describe("main entrypoint integration", () => {
 		expect(replacement?.content?.[0]?.text ?? "").not.toContain("Available:");
 		expect(toolResultHandler({ toolName: "read", isError: false, content: [] })).toBeUndefined();
 		expect(toolResultHandler({ toolName: "other", isError: true, content: [] })).toBeUndefined();
+	});
+
+	test("accepts scopes parameter in tool schema and executes discovery with scope filter", async () => {
+		envSnapshot = { ...process.env };
+		root = fs.mkdtempSync(path.join(process.cwd(), ".tmp-skill-registry-main-"));
+		process.env.OMP_AGENT_DIR = path.join(root, "agent-cache");
+		process.env.OMP_AGENT_HOME = "";
+		process.env.PI_CODING_AGENT_DIR = "";
+
+		const localRoot = path.join(root, "local");
+		const globalRoot = path.join(root, "global");
+		fs.mkdirSync(localRoot, { recursive: true });
+		fs.mkdirSync(globalRoot, { recursive: true });
+
+		writeSkill(localRoot, "local-skill", "Local body content.");
+		writeSkill(globalRoot, "global-skill", "Global body content.");
+
+		const originalLoadSettings = SERVICE.settingsLoader.loadSettings;
+		const mockSettings = {
+			roots: [localRoot, globalRoot],
+			scopeRoots: {
+				"user-authored:local": [localRoot],
+				"user-authored:global": [globalRoot],
+			},
+			scopePriority: ["user-authored:local", "user-authored:global"],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: path.join(root, "db-main-scopes.sqlite"),
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+		SERVICE.settingsLoader.loadSettings = () => mockSettings;
+
+		try {
+			const { tools } = registerHarness();
+			const tool = tools[0];
+			if (!tool?.execute) {
+				throw new Error("expected registered tool execute handler");
+			}
+
+			// Case 1: execute with scopes: ["user-authored:local"] -> should only discover local-skill
+			const result = await tool.execute(
+				"tool-call-scopes-1",
+				{
+					action: "discover",
+					query: "body content",
+					scopes: ["user-authored:local"],
+					refresh: true,
+				},
+				undefined,
+				undefined,
+				undefined,
+			);
+
+			const text = textFromResult(result);
+			expect(text).toContain("skill://local-skill");
+			expect(text).not.toContain("skill://global-skill");
+
+			// Check schema definition for scopes
+			expect(tool.parameters).toBeDefined();
+			const paramsSchema = tool.parameters as { properties?: { scopes?: unknown } };
+			expect(paramsSchema.properties?.scopes).toBeDefined();
+		} finally {
+			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
+		}
 	});
 });

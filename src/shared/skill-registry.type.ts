@@ -47,6 +47,17 @@ export type SkillGraphMode = "outbound" | "inbound" | "cycles" | "orphans";
 /** skill-registry 설정 shape입니다. */
 export type SkillRegistrySettings = {
 	roots?: string[];
+	/**
+	 * 결과 스코프를 이름별로 매칭하기 위한 루트 목록입니다.
+	 * scope 루트는 후속 로더에서 경로 접두사 탐색 정책으로 사용됩니다.
+	 */
+	scopeRoots?: Record<string, string[]>;
+	/**
+	 * 스코프 우선순위입니다.
+	 * 값이 앞에 있을수록 동일 스킬 충돌 시 해당 스코프가 먼저 적용됩니다.
+	 * 기본 우선순위: user-authored:local > user-authored:global > managed-skills.
+	 */
+	scopePriority?: string[];
 	fileNames?: string[];
 	presetSkills?: string[];
 	databasePath?: string;
@@ -63,6 +74,12 @@ export type ToolInput = {
 	action: SkillRegistryAction;
 	query?: string;
 	names?: string[];
+	/**
+	 * 스코프 필터 목록입니다.
+	 * 입력이 생략되면 설정(scopePriority/scopeRoots) 기반으로 전체 스코프를 사용합니다.
+	 * 입력이 비어 있으면 명시적 조회로 간주해 일치 스코프가 없어 safe-zero 처리됩니다.
+	 */
+	scopes?: string[];
 	suggestionLimit?: number;
 	roots?: string[];
 	fileNames?: string[];
@@ -85,6 +102,17 @@ export type ToolContext = {
 	query?: string;
 	names: string[];
 	orderedNames: string[];
+	/**
+	 * 정규화된 스코프 목록입니다.
+	 * 스코프가 생략되면 적용 가능한 스코프 전체를 사용하고,
+	 * 명시적으로 빈 값/미지정 스코프가 주어지면 빈 배열로 유지합니다.
+	 */
+	scopes: string[];
+	/**
+	 * ToolInput.scopes가 명시되었는지 여부입니다.
+	 * true면 생략이 아닌 요청 기반 필터링으로, 미일치 시 결과가 safe-zero가 될 수 있습니다.
+	 */
+	scopesExplicit?: boolean;
 	suggestionLimit: number;
 	roots: string[];
 	fileNames: string[];
@@ -125,6 +153,11 @@ export type RawSkill = {
 	id: string;
 	canonicalName: string;
 	path: string;
+	/**
+	 * skill이 속한 스코프입니다.
+	 * scope 정보는 인덱싱 및 결과 메타데이터 전달 시 우선권 해석에 사용됩니다.
+	 */
+	scope?: string;
 	sourceRoot: string;
 	rawFrontmatter: SkillFrontmatterRecord;
 	frontmatter: SkillFrontmatter;
@@ -181,6 +214,11 @@ export type SkillRelationGraphNode = {
 	name: string;
 	path: string;
 	category: string;
+	/**
+	 * graph에서 사용되는 스코프 태그입니다.
+	 * 동일 경로 후보가 여러 스코프에 걸칠 때 우선순위 표시용 메타데이터입니다.
+	 */
+	scope?: string;
 	title: string;
 	aliases: string[];
 };
@@ -209,6 +247,11 @@ export type SkillResolveEntry = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * resolve 결과 스코프 태그입니다.
+	 * 스코프가 없으면 legacy 호환 모드로 간주합니다.
+	 */
+	scope?: string;
 	aliases: string[];
 	requires: string[];
 	recommends: string[];
@@ -245,6 +288,11 @@ export type SkillGapCandidate = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * gap 후보의 스코프입니다.
+	 * 후보 스코프를 추적해 동일 스킬 이름의 충돌을 완화합니다.
+	 */
+	scope?: string;
 	aliases: string[];
 	score: number;
 	coverage: number;
@@ -280,6 +328,11 @@ export type SkillExplainEntry = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * explain 결과에서 선택된 스코프 태그입니다.
+	 * 레이어/경로 기반 후보 선별의 부수 메타데이터입니다.
+	 */
+	scope?: string;
 	aliases: string[];
 	reason: "seed" | "required" | "recommended";
 	via?: string;
@@ -313,6 +366,11 @@ export type SkillDecideEntry = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * decide 후보 스코프입니다.
+	 * winner 계산 시 충돌 시 가중치 보정에 활용될 수 있습니다.
+	 */
+	scope?: string;
 	aliases: string[];
 	score: number;
 	queryScore?: number;
@@ -346,6 +404,11 @@ export type SkillPlanStep = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * plan 단계에서 실제 탐색한 스코프입니다.
+	 * 비어 있으면 요청 컨텍스트에서의 암묵적 기본 스코프로 처리합니다.
+	 */
+	scope?: string;
 	reason: SkillPlanStepReason;
 	via?: string;
 	score?: number;
@@ -396,6 +459,11 @@ export type SkillBriefEntry = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * brief 출력에서 포함된 스코프입니다.
+	 * 동일 name 충돌 시 스코프 기준 병합/필터에 사용됩니다.
+	 */
+	scope?: string;
 	preview: string;
 	body?: string;
 	omittedByBudget: boolean;
@@ -447,6 +515,16 @@ export type SkillHandoffResult = {
 	winner: string | null;
 	ready: boolean;
 	sourcePath: string | null;
+	/**
+	 * handoff source의 카테고리 메타데이터입니다.
+	 * winner 후보를 경로 추적할 때 중복 후보 해소에 사용합니다.
+	 */
+	sourceCategory?: string;
+	/**
+	 * handoff source의 스코프 메타데이터입니다.
+	 * 동일 이름 충돌/권한 분리 정책을 재현하기 위한 provenance입니다.
+	 */
+	sourceScope?: string;
 	nextCommand: string | null;
 	applyHint?: string;
 	phases: SkillRoutePhase[];
@@ -467,6 +545,15 @@ export type SkillSessionPacketStep = {
 	order: number;
 	name: string;
 	sourcePath: string;
+	/**
+	 * step 기반 source의 스코프 메타데이터입니다.
+	 * 같은 경로 후보가 다중 소스에서 유입되더라도 재구성 가능하게 합니다.
+	 */
+	sourceScope?: string;
+	/**
+	 * step 기반 category 메타데이터입니다.
+	 */
+	sourceCategory?: string;
 	nextCommand: string;
 	phaseKind: SkillRoutePhaseKind;
 	layer: number | null;
@@ -481,6 +568,16 @@ export type SkillSessionPacketResult = {
 	winner: string | null;
 	ready: boolean;
 	sourcePaths: string[];
+	/**
+	 * sourcePaths 항목 단위 스코프 정렬입니다.
+	 * sourcePaths와 동일 순서로 정렬되어야 합니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * sourcePaths 항목 단위 category 정렬입니다.
+	 * sourcePaths와 동일 순서로 정렬되어야 합니다.
+	 */
+	sourcePathCategories?: string[];
 	nextCommands: string[];
 	applyHint?: string;
 	recoveryGuidance: string[];
@@ -495,6 +592,16 @@ export type SkillTurnPacketTurn = {
 	names: string[];
 	readPaths: string[];
 	sourcePaths: string[];
+	/**
+	 * turn sourcePaths의 스코프 정렬입니다.
+	 * phase 단위로 정렬되어 sourcePaths와 정합이 필요합니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * turn sourcePaths의 category 정렬입니다.
+	 * phase 단위로 정렬되어 sourcePaths와 정합이 필요합니다.
+	 */
+	sourcePathCategories?: string[];
 	nextCommands: string[];
 	objective: string;
 	checklist: string[];
@@ -510,6 +617,14 @@ export type SkillTurnPacketResult = {
 	winner: string | null;
 	ready: boolean;
 	sourcePaths: string[];
+	/**
+	 * 모든 turn.sourcePaths를 phase 순으로 펼친 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * 모든 turn.sourcePaths를 phase 순으로 펼친 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	nextCommands: string[];
 	applyHint?: string;
 	recoveryGuidance: string[];
@@ -533,6 +648,14 @@ export type SkillRecoveryPacketTurn = {
 	omittedReadPaths: string[];
 	sourcePaths: string[];
 	recoveryCommands: string[];
+	/**
+	 * recovery turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * recovery turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	objective: string;
 	unblockCriteria: string[];
 };
@@ -548,6 +671,14 @@ export type SkillRecoveryPacketResult = {
 	recoveryGuidance: string[];
 	omittedReadPaths: string[];
 	sourcePaths: string[];
+	/**
+	 * blocked turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * blocked turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	recoveryCommands: string[];
 	deferred: string[];
 	resumeTurnOrder: number | null;
@@ -573,6 +704,14 @@ export type SkillResumePacketResult = {
 	recoveryCommands: string[];
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * resume 대상 turns의 sourcePaths 정렬 스코프입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * resume 대상 turns의 sourcePaths 정렬 category입니다.
+	 */
+	sourcePathCategories?: string[];
 	deferred: string[];
 	resumeTurnOrder: number | null;
 	budget: {
@@ -598,6 +737,14 @@ export type SkillCurrentTurnPacketResult = {
 	recoveryCommands: string[];
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * 현재 turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * 현재 turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	deferred: string[];
 	activeTurnOrder: number | null;
 	budget: {
@@ -622,6 +769,14 @@ export type SkillInstructionPacketResult = {
 	activeTurnOrder: number | null;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	instructionText: string;
 	checklistText: string;
 	commandBlock: string;
@@ -646,6 +801,14 @@ export type SkillMarkdownPacketResult = {
 	activeTurnOrder: number | null;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	markdown: string;
 	commandBlock: string;
 	checklistItems: string[];
@@ -670,6 +833,14 @@ export type SkillChecklistPacketResult = {
 	activeTurnOrder: number | null;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	checklistItems: string[];
 	checklistText: string;
 	budget: {
@@ -693,6 +864,14 @@ export type SkillCommandsPacketResult = {
 	activeTurnOrder: number | null;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	commandBlock: string;
 	budget: {
 		requestedChars: number;
@@ -724,6 +903,14 @@ export type SkillFileReadyPacketResult = {
 	baseName: string;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	files: SkillFileReadyPacketFile[];
 	budget: {
 		requestedChars: number;
@@ -756,6 +943,14 @@ export type SkillApplyPacketResult = {
 	baseName: string;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	writes: SkillApplyPacketWrite[];
 	applyText: string;
 	budget: {
@@ -780,6 +975,14 @@ export type SkillWriteScriptPacketResult = {
 	baseName: string;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	writes: SkillApplyPacketWrite[];
 	scriptPath: string;
 	scriptContent: string;
@@ -814,6 +1017,14 @@ export type SkillExecutionPacketResult = {
 	baseName: string;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	files: SkillExecutionPacketFile[];
 	runCommands: string[];
 	executionText: string;
@@ -839,6 +1050,14 @@ export type SkillVerificationPacketResult = {
 	baseName: string;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	files: SkillExecutionPacketFile[];
 	runCommands: string[];
 	verificationCommands: string[];
@@ -865,6 +1084,14 @@ export type SkillSummaryPacketResult = {
 	activeTurnOrder: number | null;
 	sourcePaths: string[];
 	nextCommands: string[];
+	/**
+	 * current-turn sourcePaths의 스코프 정렬입니다.
+	 */
+	sourcePathScopes?: Array<string | undefined>;
+	/**
+	 * current-turn sourcePaths의 category 정렬입니다.
+	 */
+	sourcePathCategories?: string[];
 	summaryText: string;
 	budget: {
 		requestedChars: number;
@@ -885,6 +1112,11 @@ export type SkillCompareEntry = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * compare 항목의 스코프 라벨입니다.
+	 * 서로 다른 스코프 간 카테고리/별칭 비교를 위해 보관합니다.
+	 */
+	scope?: string;
 	aliases: string[];
 	score?: number;
 	coverage?: number;
@@ -931,6 +1163,11 @@ export type SkillRecommendEntry = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * recommend 후보 스코프입니다.
+	 * 추천 후보의 출처 추적에 사용됩니다.
+	 */
+	scope?: string;
 	aliases: string[];
 	score: number;
 	queryScore?: number;
@@ -956,6 +1193,11 @@ export type SkillPackEntry = {
 	path: string;
 	title: string;
 	category: string;
+	/**
+	 * pack 결과에서 전달되는 스코프 태그입니다.
+	 * 동일 canonical에 대한 스코프 충돌 해소 힌트로 사용합니다.
+	 */
+	scope?: string;
 	aliases: string[];
 	requires: string[];
 	recommends: string[];
@@ -1087,6 +1329,11 @@ export type IndexArtifacts = {
 	requestKey: string;
 	settings: Required<SkillRegistrySettings>;
 	requestedNames: string[];
+	/**
+	 * 인덱스 조회 또는 갱신 시 전달된 스코프 목록입니다.
+	 * 요청별 메타데이터로 캐시 키 산정 보조에 활용됩니다.
+	 */
+	requestedScopes?: string[];
 	skills: RawSkill[];
 	stats: IndexedStats;
 	docCount: number;

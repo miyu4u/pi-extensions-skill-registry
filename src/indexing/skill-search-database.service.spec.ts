@@ -38,6 +38,10 @@ function restoreEnvironment(snapshot: EnvSnapshot): void {
 function makeSettings(databasePath: string) {
 	return {
 		roots: ["./skills"],
+		scopeRoots: {
+			skills: [path.resolve("./skills")],
+		},
+		scopePriority: ["skills"],
 		fileNames: ["SKILL.md"],
 		presetSkills: [],
 		databasePath,

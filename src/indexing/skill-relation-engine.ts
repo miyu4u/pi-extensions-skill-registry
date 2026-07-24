@@ -32,6 +32,7 @@ export interface SkillRelationProjection {
 export interface SkillRelationProjectionEntry extends ComposedSkillEntry {
 	readLayer: number | null;
 	applyLayer: number | null;
+	scope?: string;
 }
 
 /** compose와 relation graph 계산의 concrete owner입니다. */
@@ -91,6 +92,7 @@ export class SkillRelationEngine {
 				}
 				return {
 					skill,
+					scope: skill.scope,
 					reason: composeEntry?.reason ?? "seed",
 					via: composeEntry?.via ?? undefined,
 					depth: composeEntry?.depth ?? 0,
@@ -383,6 +385,7 @@ export class SkillRelationEngine {
 						path: skill.path,
 						category: skill.category,
 						title: skill.title,
+						scope: skill.scope,
 						aliases: skill.aliases,
 					}) satisfies SkillRelationGraphNode,
 			);

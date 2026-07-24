@@ -1,3 +1,4 @@
+import path from "node:path";
 import type {
 	IndexArtifacts,
 	RawSkill,
@@ -61,6 +62,8 @@ export class SkillSearchEngine {
 			rankByTermAndSkill.set(term, new Map(matches.map((match) => [match.skillId, match.bm25Rank] as const)));
 		}
 		const result: SearchHit[] = [];
+		const scopeRankByName = this.buildScopeRankByName(index);
+		const scopeRankBySkillId = new Map<string, number>();
 
 		for (const skill of index.skills) {
 			let score = 0;
@@ -101,16 +104,173 @@ export class SkillSearchEngine {
 		}
 
 		return result
-			.sort((a, b) => {
-				if (b.score !== a.score) {
-					return b.score - a.score;
-				}
-				if (b.coverage !== a.coverage) {
-					return b.coverage - a.coverage;
-				}
-				return a.skill.canonicalName.localeCompare(b.skill.canonicalName);
-			})
+			.sort((a, b) => this.compareSearchHits(a, b, scopeRankByName, index.settings.scopeRoots, scopeRankBySkillId))
 			.slice(0, limit);
+	}
+
+	/**
+	 * BM25 점수와 coverage가 동일할 때 scope 우선순위 및 정렬 안정성을 적용해
+	 * 후보를 재정렬합니다.
+	 */
+	private compareSearchHits(
+		left: SearchHit,
+		right: SearchHit,
+		scopeRankByName: Map<string, number>,
+		scopeRoots: Record<string, string[]>,
+		scopeRankBySkillId: Map<string, number>,
+	): number {
+		if (left.score !== right.score) {
+			return right.score - left.score;
+		}
+		if (left.coverage !== right.coverage) {
+			return right.coverage - left.coverage;
+		}
+		const leftScopeRank = this.getScopeRank(left.skill, scopeRankByName, scopeRoots, scopeRankBySkillId);
+		const rightScopeRank = this.getScopeRank(right.skill, scopeRankByName, scopeRoots, scopeRankBySkillId);
+		if (leftScopeRank !== rightScopeRank) {
+			return leftScopeRank - rightScopeRank;
+		}
+		return left.skill.canonicalName.localeCompare(right.skill.canonicalName);
+	}
+
+	/**
+	 * 검색 스코프별 우선순위 맵을 구축합니다. 설정된 scopePriority를 우선 적용하고,
+	 * 조회되지 않은 스코프는 정렬된 보조 순서로 배치해 재사용 가능한 비교 신호를 만듭니다.
+	 */
+	private buildScopeRankByName(index: IndexArtifacts): Map<string, number> {
+		const unscopedLabel = "__unscoped__";
+		const scopeRankByName = new Map<string, number>();
+		if (index.skills.length === 0) {
+			return scopeRankByName;
+		}
+
+		const observedScopes = new Set<string>();
+		for (const skill of index.skills) {
+			observedScopes.add(this.getSkillScope(skill, index.settings.scopeRoots) ?? unscopedLabel);
+		}
+		if (observedScopes.size === 0) {
+			return scopeRankByName;
+		}
+
+		const orderedScopes: string[] = [];
+		for (const scopeName of index.settings.scopePriority) {
+			if (observedScopes.delete(scopeName)) {
+				orderedScopes.push(scopeName);
+			}
+		}
+		const unlistedScopes = [...observedScopes].sort();
+		const finalScopes = [...orderedScopes, ...unlistedScopes];
+		for (let rank = 0; rank < finalScopes.length; rank += 1) {
+			scopeRankByName.set(finalScopes[rank], rank);
+		}
+		return scopeRankByName;
+	}
+
+	/**
+	 * RawSkill에 scope가 없다면 sourceRoot 분류 정보를 이용해 대체 scope를 추정합니다.
+	 */
+	private getSkillScope(skill: RawSkill, scopeRoots: Record<string, string[]>): string | undefined {
+		if (skill.scope?.trim()) {
+			return skill.scope.trim();
+		}
+		const resolvedScope = this.classifyScopeBySourceRoot(skill.sourceRoot, scopeRoots);
+		return resolvedScope;
+	}
+
+	/**
+	 * sourceRoot를 scopeRoot 매핑으로 역분류해 가장 적합한 scope를 찾습니다.
+	 */
+	private classifyScopeBySourceRoot(sourceRoot: string, scopeRoots: Record<string, string[]>): string | undefined {
+		const normalizedSourceRoot = this.normalizeScopePathForBoundary(sourceRoot);
+		if (!normalizedSourceRoot) {
+			return undefined;
+		}
+
+		let bestMatchLength = 0;
+		let bestScopes: string[] = [];
+		for (const [scopeName, roots] of Object.entries(scopeRoots)) {
+			for (const rawRoot of roots) {
+				const normalizedRoot = this.normalizeScopePathForBoundary(rawRoot);
+				if (!normalizedRoot || !this.isScopeBoundaryMatch(normalizedSourceRoot, normalizedRoot)) {
+					continue;
+				}
+				if (normalizedRoot.length < bestMatchLength) {
+					continue;
+				}
+				if (normalizedRoot.length > bestMatchLength) {
+					bestMatchLength = normalizedRoot.length;
+					bestScopes = [scopeName];
+					continue;
+				}
+				bestScopes.push(scopeName);
+			}
+		}
+
+		if (bestScopes.length === 0) {
+			return undefined;
+		}
+		if (bestScopes.length === 1) {
+			return bestScopes[0];
+		}
+		return [...new Set(bestScopes)].sort().at(0);
+	}
+
+	/**
+	 * 경로 접두사를 경계 인식 방식으로 정규화해 scope 매핑 판정을 일관되게 수행합니다.
+	 */
+	private isScopeBoundaryMatch(source: string, root: string): boolean {
+		if (!source || !root) {
+			return false;
+		}
+		if (source === root) {
+			return true;
+		}
+		const normalizedRoot = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+		return source.startsWith(normalizedRoot);
+	}
+
+	/**
+	 * scope 비교용 canonical 문자열을 정규화하고, 검색 정렬의 fallback rank를 계산합니다.
+	 */
+	private getScopeRank(
+		skill: RawSkill,
+		scopeRankByName: Map<string, number>,
+		scopeRoots: Record<string, string[]>,
+		scopeRankBySkillId?: Map<string, number>,
+	): number {
+		if (scopeRankBySkillId) {
+			const cached = scopeRankBySkillId.get(skill.id);
+			if (cached !== undefined) {
+				return cached;
+			}
+		}
+		const fallbackScopeLabel = "__unscoped__";
+		const resolvedScope = this.getSkillScope(skill, scopeRoots);
+		if (!resolvedScope) {
+			const fallbackRank = scopeRankByName.get(fallbackScopeLabel) ?? Number.MAX_SAFE_INTEGER;
+			scopeRankBySkillId?.set(skill.id, fallbackRank);
+			return fallbackRank;
+		}
+		const rank = scopeRankByName.get(resolvedScope);
+		if (typeof rank === "number") {
+			scopeRankBySkillId?.set(skill.id, rank);
+			return rank;
+		}
+		const newRank = scopeRankByName.size;
+		scopeRankByName.set(resolvedScope, newRank);
+		scopeRankBySkillId?.set(skill.id, newRank);
+		return newRank;
+	}
+
+	/**
+	 * scope 경계 비교에서 사용될 경로를 정규화합니다.
+	 */
+	private normalizeScopePathForBoundary(rawPath: string): string {
+		if (!rawPath.trim()) {
+			return "";
+		}
+		const normalized = path.resolve(rawPath);
+		return normalized.replace(/[\\/]+$/u, "");
 	}
 
 	/**
@@ -259,6 +419,7 @@ export class SkillSearchEngine {
 						path: hit.skill.path,
 						title: hit.skill.title,
 						category: hit.skill.category,
+						scope: hit.skill.scope,
 						aliases: hit.skill.aliases,
 						score: hit.score,
 						coverage: hit.coverage,
@@ -329,6 +490,7 @@ export class SkillSearchEngine {
 				path: skill.path,
 				title: skill.title,
 				category: skill.category,
+				scope: skill.scope,
 				aliases: skill.aliases,
 				requires: skill.requires,
 				recommends: skill.recommends,

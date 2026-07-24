@@ -64,6 +64,8 @@ export class SkillExecutionPacketBuilder {
 			activeTurnOrder: currentTurnPacket.activeTurnOrder,
 			sourcePaths: currentTurnPacket.sourcePaths,
 			nextCommands: currentTurnPacket.nextCommands,
+			sourcePathScopes: currentTurnPacket.sourcePathScopes,
+			sourcePathCategories: currentTurnPacket.sourcePathCategories,
 			instructionText,
 			checklistText,
 			commandBlock,
@@ -110,6 +112,8 @@ export class SkillExecutionPacketBuilder {
 			activeTurnOrder: currentTurnPacket.activeTurnOrder,
 			sourcePaths: currentTurnPacket.sourcePaths,
 			nextCommands: currentTurnPacket.nextCommands,
+			sourcePathScopes: currentTurnPacket.sourcePathScopes,
+			sourcePathCategories: currentTurnPacket.sourcePathCategories,
 			summaryText,
 			budget: currentTurnPacket.budget,
 			turn,
@@ -166,6 +170,8 @@ export class SkillExecutionPacketBuilder {
 			activeTurnOrder: instructionPacket.activeTurnOrder,
 			sourcePaths: instructionPacket.sourcePaths,
 			nextCommands: instructionPacket.nextCommands,
+			sourcePathScopes: instructionPacket.sourcePathScopes,
+			sourcePathCategories: instructionPacket.sourcePathCategories,
 			markdown,
 			commandBlock: instructionPacket.commandBlock,
 			checklistItems,
@@ -211,6 +217,8 @@ export class SkillExecutionPacketBuilder {
 			activeTurnOrder: currentTurnPacket.activeTurnOrder,
 			sourcePaths: currentTurnPacket.sourcePaths,
 			nextCommands: currentTurnPacket.nextCommands,
+			sourcePathScopes: currentTurnPacket.sourcePathScopes,
+			sourcePathCategories: currentTurnPacket.sourcePathCategories,
 			checklistItems,
 			checklistText,
 			budget: currentTurnPacket.budget,
@@ -252,6 +260,8 @@ export class SkillExecutionPacketBuilder {
 			activeTurnOrder: currentTurnPacket.activeTurnOrder,
 			sourcePaths: currentTurnPacket.sourcePaths,
 			nextCommands: currentTurnPacket.nextCommands,
+			sourcePathScopes: currentTurnPacket.sourcePathScopes,
+			sourcePathCategories: currentTurnPacket.sourcePathCategories,
 			commandBlock: currentTurnPacket.nextCommands.join("\n"),
 			budget: currentTurnPacket.budget,
 			turn: currentTurnPacket.turn,
@@ -310,6 +320,8 @@ export class SkillExecutionPacketBuilder {
 			baseName,
 			sourcePaths: markdownPacket.sourcePaths,
 			nextCommands: markdownPacket.nextCommands,
+			sourcePathScopes: markdownPacket.sourcePathScopes,
+			sourcePathCategories: markdownPacket.sourcePathCategories,
 			files,
 			budget: markdownPacket.budget,
 			turn: markdownPacket.turn,
@@ -352,6 +364,8 @@ export class SkillExecutionPacketBuilder {
 			baseName: fileReadyPacket.baseName,
 			sourcePaths: fileReadyPacket.sourcePaths,
 			nextCommands: fileReadyPacket.nextCommands,
+			sourcePathScopes: fileReadyPacket.sourcePathScopes,
+			sourcePathCategories: fileReadyPacket.sourcePathCategories,
 			writes,
 			applyText,
 			budget: fileReadyPacket.budget,
@@ -400,6 +414,8 @@ export class SkillExecutionPacketBuilder {
 			baseName: applyPacket.baseName,
 			sourcePaths: applyPacket.sourcePaths,
 			nextCommands: applyPacket.nextCommands,
+			sourcePathScopes: applyPacket.sourcePathScopes,
+			sourcePathCategories: applyPacket.sourcePathCategories,
 			writes: applyPacket.writes,
 			scriptPath,
 			scriptContent,
@@ -458,6 +474,8 @@ export class SkillExecutionPacketBuilder {
 			baseName: writeScriptPacket.baseName,
 			sourcePaths: writeScriptPacket.sourcePaths,
 			nextCommands: writeScriptPacket.nextCommands,
+			sourcePathScopes: writeScriptPacket.sourcePathScopes,
+			sourcePathCategories: writeScriptPacket.sourcePathCategories,
 			files,
 			runCommands,
 			executionText,
@@ -480,9 +498,9 @@ export class SkillExecutionPacketBuilder {
 		minScore = 0,
 	): SkillVerificationPacketResult {
 		const executionPacket = this.executionPacketSkills(index, query, names, relationMode, budgetChars, budgetTokens, limit, minScore);
-		const verificationItems = executionPacket.turn?.exitCriteria.length
-			? executionPacket.turn.exitCriteria
-			: ["Run command completed without write errors."];
+		const turn = executionPacket.turn;
+		const verificationItems =
+			turn && turn.exitCriteria.length > 0 ? turn.exitCriteria : ["Run command completed without write errors."];
 		const verificationCommands = executionPacket.runCommands;
 		const verificationText = [
 			"Run:",
@@ -503,6 +521,8 @@ export class SkillExecutionPacketBuilder {
 			baseName: executionPacket.baseName,
 			sourcePaths: executionPacket.sourcePaths,
 			nextCommands: executionPacket.nextCommands,
+			sourcePathScopes: executionPacket.sourcePathScopes,
+			sourcePathCategories: executionPacket.sourcePathCategories,
 			files: executionPacket.files,
 			runCommands: executionPacket.runCommands,
 			verificationCommands,

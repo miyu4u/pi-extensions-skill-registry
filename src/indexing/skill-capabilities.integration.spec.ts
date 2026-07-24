@@ -10,7 +10,7 @@ function writeSkill(
 	root: string,
 	name: string,
 	body: string,
-	frontmatter: Partial<{ aliases: string; requires: string; recommends: string }> = {},
+	frontmatter: Partial<{ aliases: string; requires: string; recommends: string; category: string }> = {},
 ): void {
 	const dir = path.join(root, name);
 	fs.mkdirSync(dir, { recursive: true });
@@ -20,6 +20,7 @@ function writeSkill(
 			"---",
 			`name: ${name}`,
 			"description: indexing test skill",
+			frontmatter.category ? `category: ${frontmatter.category}` : "",
 			frontmatter.aliases ? `aliases: ${frontmatter.aliases}` : "",
 			frontmatter.requires ? `requires: ${frontmatter.requires}` : "",
 			frontmatter.recommends ? `recommends: ${frontmatter.recommends}` : "",
@@ -388,5 +389,306 @@ describe("skill-index service", () => {
 		expect(rebuilt.skills.find((skill) => skill.canonicalName === "observability")?.bodyText).toContain(
 			"Rewritten source body for refresh rebuild.",
 		);
+	});
+
+	test("selected local/global/managed never leaks in indexing and search", async () => {
+		const originalLoadSettings = SERVICE.settingsLoader.loadSettings;
+		const localRoot = path.join(root, "local");
+		const globalRoot = path.join(root, "global");
+		const managedRoot = path.join(root, "managed");
+
+		fs.mkdirSync(localRoot, { recursive: true });
+		fs.mkdirSync(globalRoot, { recursive: true });
+		fs.mkdirSync(managedRoot, { recursive: true });
+
+		writeSkill(localRoot, "local-skill", "Local body content.", { aliases: "local-alias", category: "indexing test skill" });
+		writeSkill(globalRoot, "global-skill", "Global body content.", { aliases: "global-alias", category: "indexing test skill" });
+		writeSkill(managedRoot, "managed-skill", "Managed body content.", { aliases: "managed-alias", category: "indexing test skill" });
+
+		const mockSettings = {
+			roots: [localRoot, globalRoot, managedRoot],
+			scopeRoots: {
+				"user-authored:local": [localRoot],
+				"user-authored:global": [globalRoot],
+				"managed-skills": [managedRoot],
+			},
+			scopePriority: ["user-authored:local", "user-authored:global", "managed-skills"],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: path.join(root, "db-leak.sqlite"),
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+		SERVICE.settingsLoader.loadSettings = () => mockSettings;
+
+		try {
+			// case 1: explicitly select only "user-authored:local"
+			const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+				action: "search",
+				scopes: ["user-authored:local"],
+				query: "body",
+				refresh: true,
+			});
+			const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+			const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+
+			// Assert only local-skill is returned
+			expect(hits.map((h) => h.skill.canonicalName)).toEqual(["local-skill"]);
+			expect(hits.every((h) => h.skill.scope === "user-authored:local")).toBe(true);
+
+			// Check category remains separate metadata field
+			expect(hits[0]?.skill.category).toBe("indexing test skill");
+
+			// Check exact resolve doesn't resolve from other scopes
+			const resolved = SERVICE.skillSearchEngine.resolveSkills(artifacts, ["global-alias", "local-alias"], false, 400, 400);
+			expect(resolved.resolved.map((entry) => entry.name)).toEqual(["local-skill"]);
+			expect(resolved.missing).toContain("global-alias");
+		} finally {
+			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
+		}
+	});
+
+	test("omitted scope sees all and equal relevance follows configurable priority; custom priority works", async () => {
+		const originalLoadSettings = SERVICE.settingsLoader.loadSettings;
+		const localRoot = path.join(root, "local");
+		const globalRoot = path.join(root, "global");
+		const managedRoot = path.join(root, "managed");
+
+		fs.mkdirSync(localRoot, { recursive: true });
+		fs.mkdirSync(globalRoot, { recursive: true });
+		fs.mkdirSync(managedRoot, { recursive: true });
+
+		// Writing skills with identical content to force score/coverage ties
+		writeSkill(localRoot, "local-skill", "Identical test content for tie-breaker.");
+		writeSkill(globalRoot, "global-skill", "Identical test content for tie-breaker.");
+		writeSkill(managedRoot, "managed-skill", "Identical test content for tie-breaker.");
+
+		const mockSettings = {
+			roots: [localRoot, globalRoot, managedRoot],
+			scopeRoots: {
+				"user-authored:local": [localRoot],
+				"user-authored:global": [globalRoot],
+				"managed-skills": [managedRoot],
+			},
+			scopePriority: ["user-authored:local", "user-authored:global", "managed-skills"],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: path.join(root, "db-priority.sqlite"),
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+		SERVICE.settingsLoader.loadSettings = () => mockSettings;
+
+		try {
+			// Case 1: Omitted scopes sees all, default priority: local > global > managed
+			const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+				action: "search",
+				query: "Identical",
+				refresh: true,
+			});
+			const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+			const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+
+			expect(hits.map((h) => h.skill.canonicalName)).toEqual(["local-skill", "global-skill", "managed-skill"]);
+			expect(hits[0]?.skill.scope).toBe("user-authored:local");
+			expect(hits[1]?.skill.scope).toBe("user-authored:global");
+			expect(hits[2]?.skill.scope).toBe("managed-skills");
+
+			// Case 2: Custom priority: managed > global > local
+			const customSettings = {
+				...mockSettings,
+				scopePriority: ["managed-skills", "user-authored:global", "user-authored:local"],
+				databasePath: path.join(root, "db-priority-custom.sqlite"),
+			};
+			SERVICE.settingsLoader.loadSettings = () => customSettings;
+
+			const ctxCustom = SERVICE.skillInputNormalizer.normalizeToolInput({
+				action: "search",
+				query: "Identical",
+				refresh: true,
+			});
+			const artifactsCustom = await SERVICE.skillIndexLoader.loadIndex(ctxCustom);
+			const hitsCustom = SERVICE.skillSearchEngine.searchByBm25(
+				artifactsCustom,
+				ctxCustom.query,
+				ctxCustom.limit,
+				ctxCustom.minScore,
+			);
+
+			expect(hitsCustom.map((h) => h.skill.canonicalName)).toEqual(["managed-skill", "global-skill", "local-skill"]);
+			expect(hitsCustom[0]?.skill.scope).toBe("managed-skills");
+			expect(hitsCustom[1]?.skill.scope).toBe("user-authored:global");
+			expect(hitsCustom[2]?.skill.scope).toBe("user-authored:local");
+		} finally {
+			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
+		}
+	});
+
+	test("unknown or empty explicit scopes return safe-zero results safely", async () => {
+		const originalLoadSettings = SERVICE.settingsLoader.loadSettings;
+		const localRoot = path.join(root, "local");
+		fs.mkdirSync(localRoot, { recursive: true });
+		writeSkill(localRoot, "local-skill", "Local body content.");
+
+		const mockSettings = {
+			roots: [localRoot],
+			scopeRoots: {
+				"user-authored:local": [localRoot],
+			},
+			scopePriority: ["user-authored:local"],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: path.join(root, "db-sz.sqlite"),
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+		SERVICE.settingsLoader.loadSettings = () => mockSettings;
+
+		try {
+			// empty explicit scopes
+			const ctxEmpty = SERVICE.skillInputNormalizer.normalizeToolInput({
+				action: "search",
+				scopes: [],
+				query: "content",
+				refresh: true,
+			});
+			const artifactsEmpty = await SERVICE.skillIndexLoader.loadIndex(ctxEmpty);
+			expect(artifactsEmpty.docCount).toBe(0);
+
+			// unknown explicit scopes
+			const ctxUnknown = SERVICE.skillInputNormalizer.normalizeToolInput({
+				action: "search",
+				scopes: ["non-existent-scope"],
+				query: "content",
+				refresh: true,
+			});
+			const artifactsUnknown = await SERVICE.skillIndexLoader.loadIndex(ctxUnknown);
+			expect(artifactsUnknown.docCount).toBe(0);
+		} finally {
+			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
+		}
+	});
+
+	test("custom future scope works correctly when explicitly requested", async () => {
+		const originalLoadSettings = SERVICE.settingsLoader.loadSettings;
+		const futureRoot = path.join(root, "future");
+
+		fs.mkdirSync(futureRoot, { recursive: true });
+
+		writeSkill(futureRoot, "future-skill", "Future scope content.", { category: "future-category" });
+
+		const mockSettings = {
+			roots: [futureRoot],
+			scopeRoots: {
+				"future-scope": [futureRoot],
+			},
+			scopePriority: [],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: path.join(root, "db-future.sqlite"),
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+		SERVICE.settingsLoader.loadSettings = () => mockSettings;
+
+		try {
+			const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+				action: "search",
+				scopes: ["future-scope"],
+				query: "Future",
+				refresh: true,
+			});
+			const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+			const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+
+			expect(hits.map((h) => h.skill.canonicalName)).toEqual(["future-skill"]);
+			expect(hits[0]?.skill.scope).toBe("future-scope");
+			expect(hits[0]?.skill.category).toBe("future-category");
+		} finally {
+			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
+		}
+	});
+
+	test("gap, resolve, and search projections retain scope and category separately and do not leak under explicit selected scope", async () => {
+		const originalLoadSettings = SERVICE.settingsLoader.loadSettings;
+		const localRoot = path.join(root, "local-scoped");
+		const globalRoot = path.join(root, "global-scoped");
+
+		fs.mkdirSync(localRoot, { recursive: true });
+		fs.mkdirSync(globalRoot, { recursive: true });
+
+		writeSkill(localRoot, "local-skill", "Local content code search.", {
+			aliases: "local-alias",
+			category: "local-category",
+		});
+		writeSkill(globalRoot, "global-skill", "Global content code search.", {
+			aliases: "global-alias",
+			category: "global-category",
+		});
+
+		const mockSettings = {
+			roots: [localRoot, globalRoot],
+			scopeRoots: {
+				"user-authored:local": [localRoot],
+				"user-authored:global": [globalRoot],
+			},
+			scopePriority: ["user-authored:local", "user-authored:global"],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: path.join(root, "db-scope-retains-and-leaks.sqlite"),
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+		SERVICE.settingsLoader.loadSettings = () => mockSettings;
+
+		try {
+			// Explicitly select only "user-authored:local"
+			const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+				action: "search",
+				scopes: ["user-authored:local"],
+				query: "content search",
+				refresh: true,
+			});
+			const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+
+			// 1. Search projection verification:
+			// - Check that global-skill is NOT leaked (not in search results)
+			// - Check that scope and category are retained separately
+			const hits = SERVICE.skillSearchEngine.searchByBm25(artifacts, ctx.query, ctx.limit, ctx.minScore);
+			expect(hits.map((h) => h.skill.canonicalName)).toEqual(["local-skill"]);
+			expect(hits[0]?.skill.scope).toBe("user-authored:local");
+			expect(hits[0]?.skill.category).toBe("local-category");
+
+			// 2. Resolve projection verification:
+			// - Check that resolving with global-alias/global-skill does NOT leak the global candidates (they must be in missing)
+			// - Check that resolved local-skill has separate scope and category
+			const resolved = SERVICE.skillSearchEngine.resolveSkills(
+				artifacts,
+				["local-alias", "global-alias", "global-skill"],
+				false,
+				400,
+				400,
+			);
+			expect(resolved.resolved.map((entry) => entry.name)).toEqual(["local-skill"]);
+			expect(resolved.resolved[0]?.scope).toBe("user-authored:local");
+			expect(resolved.resolved[0]?.category).toBe("local-category");
+			expect(resolved.missing).toContain("global-alias");
+			expect(resolved.missing).toContain("global-skill");
+
+			// 3. Gap projection verification:
+			// - Check that global-skill is NOT leaked in gap candidates
+			// - Check that scope and category are retained separately in gap candidates
+			const gapResult = SERVICE.skillSearchEngine.gapSkills(artifacts, "content search", [], 0.5, ctx.limit, ctx.minScore);
+			expect(gapResult.candidates.map((c) => c.name)).toEqual(["local-skill"]);
+			expect(gapResult.candidates[0]?.scope).toBe("user-authored:local");
+			expect(gapResult.candidates[0]?.category).toBe("local-category");
+		} finally {
+			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
+		}
 	});
 });

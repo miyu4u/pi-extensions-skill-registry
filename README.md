@@ -109,10 +109,27 @@ Skill 본문을 작성합니다.
 | 3 | `.agents/skills` | agent workspace skill |
 | 4 | `~/.pi/agent/skills` | Pi user skill |
 | 5 | `~/.omp/agent/skills` | OMP user skill |
-| 6 | `~/.omp/agent/managed-skills` | OMP managed skill |
+| 6 | `~/.omp/managed-skills` | OMP managed skill |
 | 7 | `~/.agents/skills` | agent fallback skill |
 
 `names`를 지정한 요청은 각 root에서 직접 경로를 우선 확인하고, 모든 이름을 직접 찾지 못한 root에서는 재귀 탐색으로 보완합니다. `names`가 없으면 전체 재귀 탐색을 사용합니다.
+
+범위(scope) 기반 탐색과 우선순위는 `scopeRoots`/`scopePriority`로 별도 관리됩니다.
+현재 기본 값은 다음과 같습니다.
+
+```json
+{
+  "user-authored:local": ["$cwd"],
+  "user-authored:global": ["$home"],
+  "managed-skills": ["~/.omp/managed-skills"]
+}
+```
+
+기본 우선순위는 `user-authored:local > user-authored:global > managed-skills`이며, 입력/설정에서 명시한 순서를 그대로 사용합니다.  
+경로 값은 prefix 기반으로 매칭되므로 `$cwd`/`$home`/`~/.omp/managed-skills`는 각각 `/**` 하위 전체를 담당합니다.
+
+`scopePriority`가 빈 배열이거나 항목이 비면 해당 항목만 제외되고, 미기재 scope는 관측된 스코프 뒤에 사전순으로 보존됩니다.
+미지정 스코프(`scopes` 입력 누락)는 모든 effective scope를 대상으로 합니다. explicit 목록에서 empty 항목을 제거한 뒤 알려진 scope가 하나도 남지 않으면 safe-zero로 빈 결과를 반환하며, valid scope와 empty 항목이 섞인 경우 valid scope만 조회합니다.
 
 ## 설정
 
@@ -137,6 +154,13 @@ Skill 본문을 작성합니다.
 {
   "skillRegistry": {
     "roots": ["./skills", "~/.omp/agent/skills"],
+    "scopeRoots": {
+      "user-authored:local": ["$cwd"],
+      "user-authored:global": ["$home"],
+      "managed-skills": ["~/.omp/managed-skills"],
+      "team-scope": ["./.team/skills"]
+    },
+    "scopePriority": ["user-authored:local", "user-authored:global", "managed-skills", "team-scope"],
     "fileNames": ["SKILL.md"],
     "presetSkills": [],
     "databasePath": "~/.omp/agent/cache/skill-registry/index.sqlite",
@@ -150,6 +174,8 @@ Skill 본문을 작성합니다.
 | 설정 | 기본값 | 설명 |
 | --- | ---: | --- |
 | `roots` | 위 기본 목록 | skill root 목록. 지정하면 기본 목록을 대체 |
+| `scopeRoots` | 위 기본 scope-root 맵 | 경로-기반 scope 분류에 사용 (`scopePriority`에 없더라도 실제 root가 있으면 유효 scope로 반영) |
+| `scopePriority` | `user-authored:local`, `user-authored:global`, `managed-skills` | scope 비교/랭킹 우선순위 |
 | `fileNames` | `SKILL.md`, `skill.md`, `Skill.md` | 탐색할 파일명 |
 | `presetSkills` | `[]` | 설정에 저장하는 preset skill 이름 목록 |
 | `databasePath` | agent root 아래 `cache/skill-registry/index.sqlite` | SQLite index 경로 |
@@ -157,7 +183,8 @@ Skill 본문을 작성합니다.
 | `maxTopK` | `50` | 결과 수의 상한 |
 | `includePreviewBodyChars` | `250` | 검색 결과 preview 본문 길이 |
 
-입력의 `roots`와 `fileNames`는 해당 요청에 한해 설정을 대체합니다. 입력의 `databasePath`는 지원하지 않으며 database 경로는 설정에서 지정합니다. SQLite 파일은 cache이며, 원본은 항상 skill 문서입니다.
+입력의 `roots`와 `fileNames`는 해당 요청에 한해 설정을 대체합니다. `roots`가 입력/설정에 있을 때는 scopeRoots가 제안한 추가 경로를 병합하지 않고 전체 목록을 대체합니다.
+`databasePath`는 tool input으로 덮어쓸 수 없고 settings에서만 지정합니다. SQLite 파일은 cache이며, 원본은 항상 skill 문서입니다.
 
 ## `skill_registry` tool
 
@@ -170,6 +197,7 @@ Skill 본문을 작성합니다.
 | `action` | enum | 실행할 동작 |
 | `query` | string, 최대 1024자 | 검색어 또는 작업 설명 |
 | `names` | string[] | canonical name 또는 alias |
+| `scopes` | string[] | scope 필터. 생략 시 모든 effective scope를 검색 |
 | `suggestionLimit` | integer, 0..5 | `resolve` missing recovery 후보 수. 기본 3 |
 | `roots` | string[] | 이번 요청에서 사용할 skill root |
 | `fileNames` | string[] | 이번 요청에서 탐색할 파일명 |
@@ -277,9 +305,31 @@ Skill 본문을 작성합니다.
 
 1. score 내림차순
 2. query coverage 내림차순
-3. canonical name 오름차순
+3. scope rank 오름차순 (`scopePriority` 기반, 입력/설정 priority가 먼저)
+4. canonical name 오름차순
+
+`scope`는 파일 위치 분류 라벨이고, `category`는 frontmatter 메타데이터입니다. 둘은 서로 독립이며:
+- 검색 정렬에서 `category`는 직접 비교 키로 쓰이지 않고,
+- 추천/경로 계산에서는 category 일치가 `recommend` 점수에 보너스 요인으로 반영됩니다.
 
 첫 검색에서 결과가 없으면 운영성 stop word를 제거한 query rewrite를 한 번 시도합니다. 그래도 결과가 없으면 임의로 skill을 선택하지 않고 `safe-zero` diagnostics를 반환합니다.
+
+`scopes` 입력은 다음처럼 동작합니다.
+- 생략: scope 미지정 모드로 동작해 effective scope를 전부 탐색합니다(오버헤드 높은 all-scope).
+- 명시된 scope가 하나 이상이고 모두 유효: 해당 scope 소속 root만 스캔/표기합니다.
+- 명시된 scope가 비어 있거나 unknown: safe-zero로 빈 스냅샷을 즉시 반환합니다.
+
+`index`/`metrics`/`discover` 결과에는 기본적으로 scope 출력이 포함될 수 있습니다(`scope`/`sourceRoot` 기반 분포, scope별 집계). `category`는 각각의 항목 라인과 `metrics`의 카테고리 집계에서 확인할 수 있습니다.
+
+## SQLite 캐시 재생성
+
+`index` 결과는 아래 조건에서 요청 키가 같아도 snapshot이 무효화되거나 손상 가능성이 있으면 캐시를 새로 생성합니다.
+
+- 요청 키/TTL 불일치: 현재 key가 맞지 않으면 `readSnapshot`이 null을 반환해 재빌드 트리거.
+- DB 메타/스키마 불일치: `application_id`가 유효하지 않거나 `user_version`이 다른 경우 소유 스키마를 재생성.
+- scope/skill 메타 역직렬화 실패: scope 메타데이터, 통계, skill row 파싱이 실패하면 스키마를 재생성 후 다음 실행에서 다시 빌드.
+
+재생성 시 `scopeRoots`와 `scopePriority`는 `settings`와 함께 cache에 round-trip 됩니다.
 
 `resolve`는 canonical name 또는 alias의 exact match만 사용합니다. `compose`와 packet action의 관계 확장은 `requires`를 기본으로 하며, `relationMode: "full"`일 때 `recommends`까지 포함합니다.
 
