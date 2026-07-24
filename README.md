@@ -179,12 +179,13 @@ Skill 본문을 작성합니다.
 | `fileNames` | `SKILL.md`, `skill.md`, `Skill.md` | 탐색할 파일명 |
 | `presetSkills` | `[]` | 설정에 저장하는 preset skill 이름 목록 |
 | `databasePath` | agent root 아래 `cache/skill-registry/index.sqlite` | SQLite index 경로 |
-| `cacheTtlMs` | `60000` | process index cache의 유효 시간 |
+| `cacheTtlMs` | `60000` | process/SQLite snapshot 재사용의 최대 유효 시간 |
 | `maxTopK` | `50` | 결과 수의 상한 |
 | `includePreviewBodyChars` | `250` | 검색 결과 preview 본문 길이 |
 
 입력의 `roots`와 `fileNames`는 해당 요청에 한해 설정을 대체합니다. `roots`가 입력/설정에 있을 때는 scopeRoots가 제안한 추가 경로를 병합하지 않고 전체 목록을 대체합니다.
 `databasePath`는 tool input으로 덮어쓸 수 없고 settings에서만 지정합니다. SQLite 파일은 cache이며, 원본은 항상 skill 문서입니다.
+Cache hit에서도 effective root의 candidate file 목록과 `size`/`mtimeMs`를 scan해 source manifest를 비교합니다. 이 freshness scan은 corpus file 수에 선형이지만 Markdown parsing, tokenization, FTS replacement는 manifest가 바뀔 때만 수행합니다.
 
 ## `skill_registry` tool
 
@@ -326,10 +327,11 @@ Skill 본문을 작성합니다.
 `index` 결과는 아래 조건에서 요청 키가 같아도 snapshot이 무효화되거나 손상 가능성이 있으면 캐시를 새로 생성합니다.
 
 - 요청 키/TTL 불일치: 현재 key가 맞지 않으면 `readSnapshot`이 null을 반환해 재빌드 트리거.
+- source manifest 불일치: candidate file의 추가·삭제·rename, root 생성·삭제, `size`/`mtimeMs` 변경을 다음 요청에서 감지해 active/SQLite snapshot을 재빌드.
 - DB 메타/스키마 불일치: `application_id`가 유효하지 않거나 `user_version`이 다른 경우 소유 스키마를 재생성.
-- scope/skill 메타 역직렬화 실패: scope 메타데이터, 통계, skill row 파싱이 실패하면 스키마를 재생성 후 다음 실행에서 다시 빌드.
+- source signature/scope/skill 메타 역직렬화 실패: signature, scope 메타데이터, 통계, skill row 파싱이 실패하면 스키마를 재생성 후 다음 실행에서 다시 빌드.
 
-재생성 시 `scopeRoots`와 `scopePriority`는 `settings`와 함께 cache에 round-trip 됩니다.
+재생성 시 `scopeRoots`, `scopePriority`, source manifest signature는 cache에 round-trip 됩니다. Signature는 normalized root/path, missing-root 상태, 실제 targeted/full mode, file size, `mtimeMs`를 deterministic 순서로 직렬화해 계산하며 source body는 cache hit에서 읽지 않습니다. 따라서 내용과 size를 유지하고 `mtime`까지 인위적으로 복원한 수정 감지는 지원하지 않습니다.
 
 `resolve`는 canonical name 또는 alias의 exact match만 사용합니다. `compose`와 packet action의 관계 확장은 `requires`를 기본으로 하며, `relationMode: "full"`일 때 `recommends`까지 포함합니다.
 
