@@ -9,6 +9,8 @@ import type { SkillSearchDatabaseService } from "./skill-search-database.service
 
 const SKIP_PATH = path.join(process.cwd(), ".tmp-skill-registry-search-db-bun-");
 
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 function createRoot(): string {
 	return fs.mkdtempSync(SKIP_PATH);
 }
@@ -148,6 +150,7 @@ function makeInput(
 		generatedAt: Date.now(),
 		ttlMs,
 		requestKey,
+		sourceSignature: VALID_SOURCE_SIGNATURE,
 		settings: settings ?? makeSettings(dbPath),
 		requestedNames: [],
 		skills,
@@ -201,6 +204,7 @@ describe("skill-search-database service bun smoke", () => {
 
 		expect(restored).not.toBeNull();
 		expect(restored?.skills[0]).toEqual(seed);
+		expect(restored?.sourceSignature).toBe(VALID_SOURCE_SIGNATURE);
 		expect(restored?.settings.databasePath).toBe(path.resolve(databasePath));
 	});
 
@@ -292,6 +296,7 @@ describe("skill-search-database service bun smoke", () => {
 		expect(restored.settings.scopeRoots).toEqual(scopeRoots);
 		expect(restored.settings.scopePriority).toEqual(scopePriority);
 		expect(restored.stats.scopeDistribution).toEqual(scopeDistribution);
+		expect(restored.sourceSignature).toBe(VALID_SOURCE_SIGNATURE);
 	});
 
 	test("proves request identity isolation where observable via bun:sqlite", async () => {
@@ -324,7 +329,7 @@ describe("skill-search-database service bun smoke", () => {
 
 		const setupDb = new Database(databasePath);
 		setupDb.run("PRAGMA application_id = 1397445191;");
-		setupDb.run("PRAGMA user_version = 2;");
+		setupDb.run("PRAGMA user_version = 3;");
 		setupDb.run(`CREATE TABLE cache_metadata (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			snapshot_token TEXT NOT NULL,
@@ -345,6 +350,17 @@ describe("skill-search-database service bun smoke", () => {
 		const rows = checkDb.query("SELECT * FROM cache_metadata;").all();
 		expect(rows).toHaveLength(0); // must be dropped and recreated empty
 
+		const columns = checkDb
+			.query("SELECT name FROM pragma_table_info('cache_metadata') ORDER BY cid;")
+			.all()
+			.map((row) => {
+				if (row && typeof row === "object" && "name" in row) {
+					return String(row.name);
+				}
+				return "";
+			});
+		expect(columns).toContain("source_signature");
+
 		const userVersion = checkDb.query("PRAGMA user_version;").get();
 		let uvValue = 0;
 		if (userVersion && typeof userVersion === "object") {
@@ -354,7 +370,7 @@ describe("skill-search-database service bun smoke", () => {
 				uvValue = Number(userVersion.value);
 			}
 		}
-		expect(uvValue).toBe(3);
+		expect(uvValue).toBe(4);
 		checkDb.close();
 	});
 
@@ -391,6 +407,89 @@ describe("skill-search-database service bun smoke", () => {
 		const checkDb = new Database(databasePath);
 		const rows = checkDb.query("SELECT * FROM cache_metadata;").all();
 		expect(rows).toHaveLength(0);
+		checkDb.close();
+	});
+
+	test("round-trips sourceSignature metadata via bun:sqlite", async () => {
+		root = createRoot();
+		const databasePath = path.join(root, "signature-roundtrip.sqlite");
+		await service.initialize(databasePath);
+
+		const seed = makeSkill({
+			id: "bun-sig-1",
+			canonicalName: "bun-signature",
+			sourceRoot: root,
+			description: "bun signature round trip",
+			bodyText: "Body for bun signature.",
+			title: "bun-signature",
+		});
+		const signature = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+		const snapshot = service.replaceSnapshot(
+			{
+				...makeInput(databasePath, "request:bun-signature", [seed], Date.now() - 40),
+				sourceSignature: signature,
+			},
+			[makeDocument(seed)],
+		);
+		expect(snapshot.sourceSignature).toBe(signature);
+
+		closeDb(service);
+		service = createSkillSearchDatabaseService();
+		await service.initialize(databasePath);
+		const restored = service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1);
+		expect(restored?.sourceSignature).toBe(signature);
+	});
+
+	test("malformed sourceSignature metadata triggers cache miss and owned schema recreation via bun:sqlite", async () => {
+		root = createRoot();
+		const databasePath = path.join(root, "signature-miss.sqlite");
+		await service.initialize(databasePath);
+
+		const seed = makeSkill({
+			id: "bun-sig-miss",
+			canonicalName: "bun-signature-miss",
+			sourceRoot: root,
+			description: "bun malformed signature",
+			bodyText: "Body for malformed bun signature.",
+			title: "bun-signature-miss",
+		});
+		const snapshot = service.replaceSnapshot(makeInput(databasePath, "request:bun-signature-miss", [seed], Date.now() - 40), [
+			makeDocument(seed),
+		]);
+		expect(service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1)).not.toBeNull();
+
+		closeDb(service);
+		const corruptDb = new Database(databasePath);
+		corruptDb.run("UPDATE cache_metadata SET source_signature = ? WHERE id = 1;", ["legacy-or-malformed"]);
+		corruptDb.close();
+
+		service = createSkillSearchDatabaseService();
+		await service.initialize(databasePath);
+		expect(service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1)).toBeNull();
+
+		const checkDb = new Database(databasePath);
+		const rows = checkDb.query("SELECT * FROM cache_metadata;").all();
+		const columns = checkDb
+			.query("SELECT name FROM pragma_table_info('cache_metadata') ORDER BY cid;")
+			.all()
+			.map((row) => {
+				if (row && typeof row === "object" && "name" in row) {
+					return String(row.name);
+				}
+				return "";
+			});
+		const userVersion = checkDb.query("PRAGMA user_version;").get();
+		let uvValue = 0;
+		if (userVersion && typeof userVersion === "object") {
+			if ("user_version" in userVersion) {
+				uvValue = Number(userVersion.user_version);
+			} else if ("value" in userVersion) {
+				uvValue = Number(userVersion.value);
+			}
+		}
+		expect(rows).toHaveLength(0);
+		expect(columns).toContain("source_signature");
+		expect(uvValue).toBe(4);
 		checkDb.close();
 	});
 });

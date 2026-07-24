@@ -13,6 +13,19 @@ import type {
 	SkillSearchSnapshot,
 	SkillSearchSnapshotInput,
 } from "./skill-search-database.interface";
+import type { SourceManifestInterface } from "./source-manifest.interface";
+import { SourceManifestService } from "./source-manifest.service";
+
+/**
+ * SnapshotInput fixture가 재사용할 유효한 64-hex sourceSignature입니다.
+ */
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const STALE_SOURCE_SIGNATURE = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const FRESH_SOURCE_SIGNATURE = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+function makeSourceFiles(files: readonly string[]): Array<{ path: string; size: number; mtimeMs: number }> {
+	return files.map((filePath) => ({ path: filePath, size: 1, mtimeMs: 1 }));
+}
 
 function makeStats(): IndexedStats {
 	return {
@@ -90,6 +103,7 @@ function makeSnapshot(input: SkillSearchSnapshotInput, token: string, skills = i
 		generatedAt: input.generatedAt,
 		ttlMs: input.ttlMs,
 		requestKey: input.requestKey,
+		sourceSignature: input.sourceSignature,
 		settings: input.settings,
 		requestedNames: input.requestedNames,
 		skills,
@@ -111,7 +125,10 @@ class FakeSearchDatabase implements SkillSearchDatabaseInterface {
 		this.initializedPaths.push(databasePath);
 	}
 
-	readSnapshot(): SkillSearchSnapshot | null {
+	readSnapshot(requestKey: string, _now: number): SkillSearchSnapshot | null {
+		if (this.persistedSnapshot?.requestKey !== requestKey) {
+			return null;
+		}
 		return this.persistedSnapshot;
 	}
 
@@ -135,6 +152,19 @@ class FakeSearchDatabase implements SkillSearchDatabaseInterface {
 	}
 }
 
+/**
+ * createSignature 반환값을 테스트 중간에 바꿀 수 있는 SourceManifest stub입니다.
+ */
+function makeControllableSourceManifest(initialSignature = VALID_SOURCE_SIGNATURE): SourceManifestInterface & { signature: string } {
+	const manifest = {
+		signature: initialSignature,
+		createSignature(): string {
+			return manifest.signature;
+		},
+	};
+	return manifest;
+}
+
 function makeLoader(
 	database: FakeSearchDatabase,
 	store: ActiveIndexStore,
@@ -142,6 +172,7 @@ function makeLoader(
 	scannerOverride?: Partial<SkillFileScanner>,
 	parserOverride?: Partial<SkillDocumentParser>,
 	resolverOverride?: SkillScopeResolverInterface,
+	sourceManifestOverride?: SourceManifestInterface,
 ): SkillIndexLoader {
 	const tokenizer = {
 		tokenizeDocumentText: () => ({ baseTokens: [], derivedTokens: [], allTokens: [] }),
@@ -154,7 +185,7 @@ function makeLoader(
 			if (scannerOverride?.scan) {
 				return scannerOverride.scan(root, fileNames, requestedSet);
 			}
-			return { missingRoot: false, mode: "full", files: [] };
+			return { root, missingRoot: false, mode: "full", files: [], sourceFiles: [] };
 		},
 	} as unknown as SkillFileScanner;
 	const parser = {
@@ -165,7 +196,15 @@ function makeLoader(
 			return null;
 		},
 	} as unknown as SkillDocumentParser;
-	return new SkillIndexLoader(database, tokenizer, scanner, parser, store, resolverOverride ?? new SkillScopeResolverService());
+	return new SkillIndexLoader(
+		database,
+		tokenizer,
+		scanner,
+		parser,
+		store,
+		resolverOverride ?? new SkillScopeResolverService(),
+		sourceManifestOverride ?? new SourceManifestService(),
+	);
 }
 
 describe("SkillIndexLoader lifecycle", () => {
@@ -188,12 +227,18 @@ describe("SkillIndexLoader lifecycle", () => {
 	test("activates a persisted snapshot with its identity in ActiveIndexStore", async () => {
 		const database = new FakeSearchDatabase();
 		const store = new ActiveIndexStore();
-		const loader = makeLoader(database, store, { value: 0 });
+		const manifest = makeControllableSourceManifest(VALID_SOURCE_SIGNATURE);
+		const loader = makeLoader(database, store, { value: 0 }, undefined, undefined, undefined, manifest);
 		const context = makeContext("/tmp/persisted.sqlite", { refresh: false });
+		const identity = await loader.loadIndex({ ...context, refresh: true });
+		store.clear();
+		database.replaceCount = 0;
+		database.currentToken = "";
 		const seedInput: SkillSearchSnapshotInput = {
 			generatedAt: Date.now(),
 			ttlMs: context.settings.cacheTtlMs,
-			requestKey: "persisted-request",
+			requestKey: identity.requestKey,
+			sourceSignature: VALID_SOURCE_SIGNATURE,
 			settings: context.settings,
 			requestedNames: [],
 			skills: [makeSkill("persisted")],
@@ -214,7 +259,8 @@ describe("SkillIndexLoader lifecycle", () => {
 		const database = new FakeSearchDatabase();
 		const store = new ActiveIndexStore();
 		const scans = { value: 0 };
-		const loader = makeLoader(database, store, scans);
+		const manifest = makeControllableSourceManifest(VALID_SOURCE_SIGNATURE);
+		const loader = makeLoader(database, store, scans, undefined, undefined, undefined, manifest);
 		const context = makeContext("/tmp/cache.sqlite", {
 			settings: { ...makeContext("/tmp/cache.sqlite").settings, cacheTtlMs: -1 },
 		});
@@ -225,6 +271,7 @@ describe("SkillIndexLoader lifecycle", () => {
 					generatedAt: Date.now(),
 					ttlMs: 60_000,
 					requestKey: initial.requestKey,
+					sourceSignature: VALID_SOURCE_SIGNATURE,
 					settings: context.settings,
 					requestedNames: [],
 					skills: [makeSkill("persisted")],
@@ -239,7 +286,7 @@ describe("SkillIndexLoader lifecycle", () => {
 		const restored = await loader.loadIndex({ ...context, refresh: false });
 
 		expect(restored.skills.map((skill) => skill.canonicalName)).toEqual(["persisted"]);
-		expect(scans.value).toBe(1);
+		expect(scans.value).toBe(2);
 		expect(database.replaceCount).toBe(1);
 		expect(store.activeSnapshotToken).toBe("persisted-after-expiry");
 	});
@@ -256,6 +303,113 @@ describe("SkillIndexLoader lifecycle", () => {
 		expect(store.cachedDatabasePath).toBe("");
 		expect(store.activeSnapshotToken).toBe("");
 		expect(store.cachedIndex).toBeNull();
+	});
+
+	test("reuses the same active index on unchanged source with one replace and one scan per load", async () => {
+		const database = new FakeSearchDatabase();
+		const store = new ActiveIndexStore();
+		const scans = { value: 0 };
+		const manifest = makeControllableSourceManifest();
+		const loader = makeLoader(database, store, scans, undefined, undefined, undefined, manifest);
+		const context = makeContext("/tmp/unchanged-source.sqlite");
+
+		const first = await loader.loadIndex(context);
+		const second = await loader.loadIndex({ ...context, refresh: false });
+
+		expect(second).toBe(first);
+		expect(store.cachedIndex).toBe(first);
+		expect(database.replaceCount).toBe(1);
+		expect(scans.value).toBe(2);
+	});
+
+	test("activates a cold persisted snapshot on signature match without replace and with one scan", async () => {
+		const database = new FakeSearchDatabase();
+		const store = new ActiveIndexStore();
+		const scans = { value: 0 };
+		const manifest = makeControllableSourceManifest(VALID_SOURCE_SIGNATURE);
+		const loader = makeLoader(database, store, scans, undefined, undefined, undefined, manifest);
+		const context = makeContext("/tmp/cold-persisted.sqlite", { refresh: false });
+		const identity = await loader.loadIndex({ ...context, refresh: true });
+		store.clear();
+		database.replaceCount = 0;
+		database.currentToken = "";
+		scans.value = 0;
+		const seedInput: SkillSearchSnapshotInput = {
+			generatedAt: Date.now(),
+			ttlMs: context.settings.cacheTtlMs,
+			requestKey: identity.requestKey,
+			sourceSignature: VALID_SOURCE_SIGNATURE,
+			settings: context.settings,
+			requestedNames: [],
+			skills: [makeSkill("cold-persisted")],
+			stats: makeStats(),
+			buildStartedAt: Date.now(),
+		};
+		database.persistedSnapshot = makeSnapshot(seedInput, "cold-persisted-token");
+
+		const index = await loader.loadIndex(context);
+
+		expect(index.skills.map((skill) => skill.canonicalName)).toEqual(["cold-persisted"]);
+		expect(index.requestKey).toBe(identity.requestKey);
+		expect(index.sourceSignature).toBe(VALID_SOURCE_SIGNATURE);
+		expect(store.cachedIndex).toBe(index);
+		expect(store.activeSnapshotToken).toBe("cold-persisted-token");
+		expect(database.replaceCount).toBe(0);
+		expect(scans.value).toBe(1);
+	});
+
+	test("rebuilds once with a fresh parse when active and persisted signatures both mismatch", async () => {
+		const database = new FakeSearchDatabase();
+		const store = new ActiveIndexStore();
+		const scans = { value: 0 };
+		const manifest = makeControllableSourceManifest(STALE_SOURCE_SIGNATURE);
+		let parsedSkill = makeSkill("stale");
+		const skillFile = "/skills/demo/SKILL.md";
+		const scannerOverride: Partial<SkillFileScanner> = {
+			scan: (root) => ({
+				root,
+				missingRoot: false,
+				mode: "full",
+				files: [skillFile],
+				sourceFiles: makeSourceFiles([skillFile]),
+			}),
+		};
+		const parserOverride: Partial<SkillDocumentParser> = {
+			parseSkillFile: () => parsedSkill,
+		};
+		const loader = makeLoader(database, store, scans, scannerOverride, parserOverride, undefined, manifest);
+		const context = makeContext("/tmp/signature-mismatch.sqlite");
+
+		const first = await loader.loadIndex(context);
+		expect(first.sourceSignature).toBe(STALE_SOURCE_SIGNATURE);
+		expect(first.skills.map((skill) => skill.canonicalName)).toEqual(["stale"]);
+		expect(database.replaceCount).toBe(1);
+
+		database.persistedSnapshot = makeSnapshot(
+			{
+				generatedAt: first.generatedAt,
+				ttlMs: first.ttlMs,
+				requestKey: first.requestKey,
+				sourceSignature: STALE_SOURCE_SIGNATURE,
+				settings: context.settings,
+				requestedNames: [],
+				skills: [makeSkill("persisted-stale")],
+				stats: makeStats(),
+				buildStartedAt: Date.now(),
+			},
+			store.activeSnapshotToken,
+			[makeSkill("persisted-stale")],
+		);
+		manifest.signature = FRESH_SOURCE_SIGNATURE;
+		parsedSkill = makeSkill("fresh");
+
+		const second = await loader.loadIndex({ ...context, refresh: false });
+
+		expect(database.replaceCount).toBe(2);
+		expect(second.sourceSignature).toBe(FRESH_SOURCE_SIGNATURE);
+		expect(second.skills.map((skill) => skill.canonicalName)).toEqual(["fresh"]);
+		expect(second).not.toBe(first);
+		expect(scans.value).toBe(2);
 	});
 });
 
@@ -275,7 +429,7 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		const scannerOverride: Partial<SkillFileScanner> = {
 			scan: (root: string) => {
 				scannedRoots.push(root);
-				return { missingRoot: false, mode: "full", files: [] };
+				return { root, missingRoot: false, mode: "full", files: [], sourceFiles: [] };
 			},
 		};
 
@@ -369,7 +523,7 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		const scannerOverride: Partial<SkillFileScanner> = {
 			scan: (root: string) => {
 				scannedRoots.push(root);
-				return { missingRoot: false, mode: "full", files: [] };
+				return { root, missingRoot: false, mode: "full", files: [], sourceFiles: [] };
 			},
 		};
 
@@ -457,12 +611,24 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		const scannerOverride: Partial<SkillFileScanner> = {
 			scan: (root: string) => {
 				if (root === "/skills/local-a") {
-					return { missingRoot: false, mode: "full", files: ["/skills/local-a/SKILL1.md"] };
+					return {
+						root,
+						missingRoot: false,
+						mode: "full",
+						files: ["/skills/local-a/SKILL1.md"],
+						sourceFiles: makeSourceFiles(["/skills/local-a/SKILL1.md"]),
+					};
 				}
 				if (root === "/skills/global-b") {
-					return { missingRoot: false, mode: "full", files: ["/skills/global-b/SKILL2.md"] };
+					return {
+						root,
+						missingRoot: false,
+						mode: "full",
+						files: ["/skills/global-b/SKILL2.md"],
+						sourceFiles: makeSourceFiles(["/skills/global-b/SKILL2.md"]),
+					};
 				}
-				return { missingRoot: false, mode: "full", files: [] };
+				return { root, missingRoot: false, mode: "full", files: [], sourceFiles: [] };
 			},
 		};
 
@@ -515,11 +681,14 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		const scanCount = { value: 0 };
 
 		const scannerOverride: Partial<SkillFileScanner> = {
-			scan: () => {
+			scan: (root: string) => {
+				const files = ["/skills/local-a/SKILL1.md", "/skills/local-a/SKILL1_dup.md", "/skills/local-a/SKILL2.md"];
 				return {
+					root,
 					missingRoot: false,
 					mode: "full",
-					files: ["/skills/local-a/SKILL1.md", "/skills/local-a/SKILL1_dup.md", "/skills/local-a/SKILL2.md"],
+					files,
+					sourceFiles: makeSourceFiles(files),
 				};
 			},
 		};
@@ -611,18 +780,42 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		const scannerOverride: Partial<SkillFileScanner> = {
 			scan: (root: string) => {
 				if (root === "/skills/global-b") {
-					return { missingRoot: false, mode: "full", files: ["/skills/global-b/SKILL.md"] };
+					return {
+						root,
+						missingRoot: false,
+						mode: "full",
+						files: ["/skills/global-b/SKILL.md"],
+						sourceFiles: makeSourceFiles(["/skills/global-b/SKILL.md"]),
+					};
 				}
 				if (root === "/skills/local-a") {
-					return { missingRoot: false, mode: "full", files: ["/skills/local-a/SKILL.md"] };
+					return {
+						root,
+						missingRoot: false,
+						mode: "full",
+						files: ["/skills/local-a/SKILL.md"],
+						sourceFiles: makeSourceFiles(["/skills/local-a/SKILL.md"]),
+					};
 				}
 				if (root === "/skills/unlisted-b") {
-					return { missingRoot: false, mode: "full", files: ["/skills/unlisted-b/SKILL.md"] };
+					return {
+						root,
+						missingRoot: false,
+						mode: "full",
+						files: ["/skills/unlisted-b/SKILL.md"],
+						sourceFiles: makeSourceFiles(["/skills/unlisted-b/SKILL.md"]),
+					};
 				}
 				if (root === "/skills/unlisted-a") {
-					return { missingRoot: false, mode: "full", files: ["/skills/unlisted-a/SKILL.md"] };
+					return {
+						root,
+						missingRoot: false,
+						mode: "full",
+						files: ["/skills/unlisted-a/SKILL.md"],
+						sourceFiles: makeSourceFiles(["/skills/unlisted-a/SKILL.md"]),
+					};
 				}
-				return { missingRoot: false, mode: "full", files: [] };
+				return { root, missingRoot: false, mode: "full", files: [], sourceFiles: [] };
 			},
 		};
 
@@ -762,10 +955,13 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		const scannerOverride: Partial<SkillFileScanner> = {
 			scan: (root: string) => {
 				scannedRoots.push(root);
+				const files = ["/skills/internal/SKILL.md", "/skills/sibling/SKILL.md", "/skills/internal-tools/SKILL.md"];
 				return {
+					root,
 					missingRoot: false,
 					mode: "full",
-					files: ["/skills/internal/SKILL.md", "/skills/sibling/SKILL.md", "/skills/internal-tools/SKILL.md"],
+					files,
+					sourceFiles: makeSourceFiles(files),
 				};
 			},
 		};
@@ -823,5 +1019,86 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		expect(canonicalNames).toContain("skill-internal");
 		expect(canonicalNames).not.toContain("skill-sibling");
 		expect(canonicalNames).not.toContain("skill-internal-tools");
+	});
+
+	test("regression: selected-scope ancestor scan ignores sibling metadata drift but rebuilds on selected source change", async () => {
+		const database = new FakeSearchDatabase();
+		const store = new ActiveIndexStore();
+		const scanCount = { value: 0 };
+		const selectedIdentity = { path: "/skills/internal/SKILL.md", size: 10, mtimeMs: 100 };
+		const siblingIdentity = { path: "/skills/sibling/SKILL.md", size: 20, mtimeMs: 200 };
+
+		const scannerOverride: Partial<SkillFileScanner> = {
+			scan: (root: string) => ({
+				root,
+				missingRoot: false,
+				mode: "full",
+				files: [selectedIdentity.path, siblingIdentity.path],
+				sourceFiles: [
+					{ path: selectedIdentity.path, size: selectedIdentity.size, mtimeMs: selectedIdentity.mtimeMs },
+					{ path: siblingIdentity.path, size: siblingIdentity.size, mtimeMs: siblingIdentity.mtimeMs },
+				],
+			}),
+		};
+
+		const parserOverride: Partial<SkillDocumentParser> = {
+			parseSkillFile: (skillFile: string, root: string) => {
+				const name = skillFile === selectedIdentity.path ? "skill-internal" : "skill-sibling";
+				return {
+					...makeSkill(name),
+					path: skillFile,
+					sourceRoot: root,
+				};
+			},
+		};
+
+		const settings = {
+			roots: ["/skills"],
+			scopeRoots: {
+				internal: ["/skills/internal"],
+				sibling: ["/skills/sibling"],
+			},
+			scopePriority: ["internal", "sibling"],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: "/tmp/loader-sibling-metadata.sqlite",
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+
+		const context = makeContext("/tmp/loader-sibling-metadata.sqlite", {
+			roots: ["/skills"],
+			scopes: ["internal"],
+			scopesExplicit: true,
+			settings,
+		});
+
+		const loader = makeLoader(database, store, scanCount, scannerOverride, parserOverride, resolver);
+		const first = await loader.loadIndex(context);
+
+		expect(first.skills.map((skill) => skill.canonicalName)).toEqual(["skill-internal"]);
+		expect(database.replaceCount).toBe(1);
+		expect(scanCount.value).toBe(1);
+
+		siblingIdentity.size = 999;
+		siblingIdentity.mtimeMs = 999;
+
+		const reused = await loader.loadIndex({ ...context, refresh: false });
+
+		expect(reused).toBe(first);
+		expect(database.replaceCount).toBe(1);
+		expect(scanCount.value).toBe(2);
+
+		selectedIdentity.size = 11;
+		selectedIdentity.mtimeMs = 101;
+
+		const rebuilt = await loader.loadIndex({ ...context, refresh: false });
+
+		expect(rebuilt).not.toBe(first);
+		expect(rebuilt.skills.map((skill) => skill.canonicalName)).toEqual(["skill-internal"]);
+		expect(database.replaceCount).toBe(2);
+		expect(scanCount.value).toBe(3);
+		expect(rebuilt.sourceSignature).not.toBe(first.sourceSignature);
 	});
 });

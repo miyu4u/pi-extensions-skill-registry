@@ -11,6 +11,11 @@ import { SkillRegistryToolContract } from "./schema";
 import { SERVICE } from "./service-registry";
 import type { SkillRegistryToolResult } from "./shared";
 
+/**
+ * IndexArtifacts fixture가 재사용할 유효한 64-hex sourceSignature입니다.
+ */
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 type EnvSnapshot = NodeJS.ProcessEnv;
 
 type ToolResult = SkillRegistryToolResult;
@@ -178,6 +183,7 @@ describe("main entrypoint integration", () => {
 				generatedAt: Date.now(),
 				ttlMs: 0,
 				requestKey: "",
+				sourceSignature: VALID_SOURCE_SIGNATURE,
 				settings: {
 					roots: [],
 					scopeRoots: {},

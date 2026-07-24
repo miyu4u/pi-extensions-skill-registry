@@ -4,6 +4,11 @@ import { SkillDecisionEngine } from "./skill-decision-engine";
 import type { SkillRelationEngine } from "./skill-relation-engine";
 import type { SkillSearchEngine } from "./skill-search-engine";
 
+/**
+ * IndexArtifacts fixture가 재사용할 유효한 64-hex sourceSignature입니다.
+ */
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 /** compact hit fixture helper */
 type FixtureHit = {
 	canonicalName: string;
@@ -115,6 +120,7 @@ function makeIndex(skills: RawSkill[]): IndexArtifacts {
 		generatedAt: Date.now(),
 		ttlMs: 60_000,
 		requestKey: "decision-test",
+		sourceSignature: VALID_SOURCE_SIGNATURE,
 		settings: makeSettings(),
 		requestedNames: [],
 		skills,

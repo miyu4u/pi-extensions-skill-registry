@@ -12,6 +12,7 @@ import {
 	SkillScopeResolverService,
 	SkillSearchDatabaseService,
 	SkillSearchEngine,
+	SourceManifestService,
 } from "./indexing";
 import { PromptGuidanceService } from "./prompt/prompt-guidance.service";
 import { SkillReadResultCompactorService } from "./results";
@@ -32,6 +33,8 @@ const skillSearchDatabase = createSkillSearchDatabaseService();
 const skillScopeResolver = new SkillScopeResolverService();
 const skillInputNormalizer = new SkillInputNormalizer(settingsLoader, skillScopeResolver);
 const skillFileScanner = new SkillFileScanner();
+/** Filesystem stat identity를 cache freshness signature로 축약합니다. */
+const sourceManifest = new SourceManifestService();
 const skillDocumentParser = new SkillDocumentParser();
 const activeIndexStore = new ActiveIndexStore();
 const skillSearchEngine = new SkillSearchEngine(skillSearchDatabase, searchTokenizer, activeIndexStore);
@@ -47,6 +50,7 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillDocumentParser,
 	activeIndexStore,
 	skillScopeResolver,
+	sourceManifest,
 );
 export const SERVICE = {
 	settingsLoader,

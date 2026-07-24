@@ -38,6 +38,10 @@ export type SkillSearchSnapshotInput = {
 	generatedAt: number;
 	ttlMs: number;
 	requestKey: string;
+	/**
+	 * Snapshot 생성 시 관측한 filesystem manifest signature입니다.
+	 */
+	sourceSignature: string;
 	settings: Required<SkillRegistrySettings>;
 	requestedNames: string[];
 	skills: RawSkill[];
@@ -56,6 +60,10 @@ export type SkillSearchSnapshot = {
 	generatedAt: number;
 	ttlMs: number;
 	requestKey: string;
+	/**
+	 * Cache hit 전에 현재 filesystem 상태와 비교할 manifest signature입니다.
+	 */
+	sourceSignature: string;
 	settings: Required<SkillRegistrySettings>;
 	requestedNames: string[];
 	skills: RawSkill[];

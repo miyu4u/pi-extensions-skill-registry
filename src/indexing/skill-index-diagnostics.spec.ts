@@ -3,6 +3,11 @@ import type { IndexArtifacts, IndexedStats, RawSkill, SkillRelationGraph, SkillR
 import { SkillIndexDiagnostics } from "./skill-index-diagnostics";
 import type { SkillRelationEngine } from "./skill-relation-engine";
 
+/**
+ * IndexArtifacts fixture가 재사용할 유효한 64-hex sourceSignature입니다.
+ */
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 function makeSettings() {
 	return {
 		roots: ["./skills"],
@@ -100,6 +105,7 @@ function makeIndex(params: {
 		generatedAt: Date.now(),
 		ttlMs: 60_000,
 		requestKey: "diagnostics-test",
+		sourceSignature: VALID_SOURCE_SIGNATURE,
 		settings: makeSettings(),
 		requestedNames: [],
 		skills,

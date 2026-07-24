@@ -3,6 +3,11 @@ import type { IndexArtifacts, SkillCurrentTurnPacketResult, SkillTurnPacketTurn 
 import { SkillExecutionPacketBuilder } from "./skill-execution-packet-builder";
 import type { SkillReadPacketBuilder } from "./skill-read-packet-builder";
 
+/**
+ * IndexArtifacts fixture가 재사용할 유효한 64-hex sourceSignature입니다.
+ */
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 const baseTurn: SkillTurnPacketTurn = {
 	order: 2,
 	phaseKind: "read-layer",
@@ -54,7 +59,7 @@ function makeBuilderStub(currentTurn: SkillCurrentTurnPacketResult): {
 	const currentTurnPacketSkills = jest.fn(() => currentTurn);
 	currentTurnPacketSkills.mockReturnValue(currentTurn);
 	return {
-		index: {} as IndexArtifacts,
+		index: { sourceSignature: VALID_SOURCE_SIGNATURE } as IndexArtifacts,
 		readBuilder: {
 			currentTurnPacketSkills,
 		} as unknown as SkillReadPacketBuilder,

@@ -339,9 +339,9 @@ describe("skill-index service", () => {
 		expect(filtered).toHaveLength(0);
 	});
 
-	/** close + source 제거 이후 refresh:false로도 DB에서 전체 skill 본문과 관계를 복원하는지 검증합니다. */
-	test("restores full body and relations after source removal", async () => {
-		const corpusRoot = path.join(root, "persistent-corpus");
+	/** source skill 삭제 후 refresh:false가 stale skill을 제거하고 남은 skill만 유지하는지 검증합니다. */
+	test("detects source deletion under refresh:false and drops stale skills", async () => {
+		const corpusRoot = path.join(root, "drift-deletion");
 		writeSkill(corpusRoot, "review", "Canonical review body.", { aliases: "review-skill", requires: "observability" });
 		writeSkill(corpusRoot, "observability", "Observability body with deep operational details.");
 		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
@@ -351,24 +351,168 @@ describe("skill-index service", () => {
 			query: "observability",
 			refresh: true,
 		});
-		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
-		const restoredReview = artifacts.skills.find((skill) => skill.canonicalName === "review");
-		expect(restoredReview).toBeDefined();
-		expect(restoredReview?.bodyText).toContain("Canonical review body");
-		expect(restoredReview?.requires).toEqual(["observability"]);
-		expect(restoredReview?.aliases).toEqual(["review-skill"]);
-		expect(artifacts.docCount).toBe(2);
+		const initial = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		expect(initial.docCount).toBe(2);
+		expect(initial.skills.map((skill) => skill.canonicalName).sort()).toEqual(["observability", "review"]);
+
+		closeSkillIndex();
+		fs.rmSync(path.join(corpusRoot, "observability"), { recursive: true, force: true });
+
+		const rebuilt = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
+		const remaining = rebuilt.skills.find((skill) => skill.canonicalName === "review");
+		const resolved = SERVICE.skillSearchEngine.resolveSkills(rebuilt, ["observability", "review-skill"], false, 400, 400);
+
+		expect(rebuilt.docCount).toBe(1);
+		expect(rebuilt.sourceSignature).not.toBe(initial.sourceSignature);
+		expect(rebuilt.skills.map((skill) => skill.canonicalName)).toEqual(["review"]);
+		expect(remaining?.bodyText).toContain("Canonical review body");
+		expect(remaining?.aliases).toEqual(["review-skill"]);
+		expect(remaining?.requires).toEqual(["observability"]);
+		expect(resolved.resolved.map((entry) => entry.name)).toEqual(["review"]);
+		expect(resolved.missing).toEqual(["observability"]);
+	});
+
+	/** source가 변하지 않으면 refresh:false가 active cache object를 그대로 반환하는지 검증합니다. */
+	test("returns unchanged active cache when sources are unchanged under refresh:false", async () => {
+		const corpusRoot = path.join(root, "drift-unchanged");
+		writeSkill(corpusRoot, "stable", "Stable body that must remain cached.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "search",
+			roots: [corpusRoot],
+			fileNames: ["SKILL.md"],
+			query: "stable",
+			refresh: true,
+		});
+		const first = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		const second = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
+
+		expect(second).toBe(first);
+		expect(second.sourceSignature).toBe(first.sourceSignature);
+		expect(second.docCount).toBe(1);
+		expect(second.skills[0]?.bodyText).toContain("Stable body that must remain cached.");
+	});
+
+	/** source size/mtime 변경 후 refresh:false가 새 본문으로 rebuild하는지 검증합니다. */
+	test("rebuilds under refresh:false when source size and mtime change", async () => {
+		const corpusRoot = path.join(root, "drift-modification");
+		writeSkill(corpusRoot, "observability", "Original short body.");
+		const skillPath = path.join(corpusRoot, "observability", "SKILL.md");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "search",
+			roots: [corpusRoot],
+			fileNames: ["SKILL.md"],
+			query: "observability",
+			refresh: true,
+		});
+		const initial = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		expect(initial.skills.find((skill) => skill.canonicalName === "observability")?.bodyText).toContain("Original short body.");
+
+		writeSkill(
+			corpusRoot,
+			"observability",
+			"Rewritten observability body with a deliberately longer payload so size and mtime both drift for freshness detection.",
+		);
+		const bumpedAt = new Date(Date.now() + 10_000);
+		fs.utimesSync(skillPath, bumpedAt, bumpedAt);
+
+		const rebuilt = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
+		expect(rebuilt).not.toBe(initial);
+		expect(rebuilt.sourceSignature).not.toBe(initial.sourceSignature);
+		expect(rebuilt.skills.find((skill) => skill.canonicalName === "observability")?.bodyText).toContain(
+			"Rewritten observability body with a deliberately longer payload",
+		);
+	});
+
+	/** 새 skill 추가 후 refresh:false가 추가된 skill을 인덱스에 반영하는지 검증합니다. */
+	test("indexes newly added skills under refresh:false", async () => {
+		const corpusRoot = path.join(root, "drift-addition");
+		writeSkill(corpusRoot, "alpha-base", "Base skill body before addition.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "search",
+			roots: [corpusRoot],
+			fileNames: ["SKILL.md"],
+			query: "alpha",
+			refresh: true,
+		});
+		const initial = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		expect(initial.docCount).toBe(1);
+		expect(initial.skills.map((skill) => skill.canonicalName)).toEqual(["alpha-base"]);
+
+		writeSkill(corpusRoot, "delta-added", "Newly added skill body that must appear after refresh:false rebuild.");
+		const addedPath = path.join(corpusRoot, "delta-added", "SKILL.md");
+		const bumpedAt = new Date(Date.now() + 10_000);
+		fs.utimesSync(addedPath, bumpedAt, bumpedAt);
+
+		const rebuilt = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
+		expect(rebuilt.docCount).toBe(2);
+		expect(rebuilt.sourceSignature).not.toBe(initial.sourceSignature);
+		expect(rebuilt.skills.map((skill) => skill.canonicalName).sort()).toEqual(["alpha-base", "delta-added"]);
+		expect(rebuilt.skills.find((skill) => skill.canonicalName === "delta-added")?.bodyText).toContain("Newly added skill body");
+	});
+
+	/** source directory path-only rename 후 refresh:false가 frontmatter canonical을 유지한 채 path/signature만 갱신하는지 검증합니다. */
+	test("rebuilds under refresh:false after source rename", async () => {
+		const corpusRoot = path.join(root, "drift-rename");
+		writeSkill(corpusRoot, "before-rename", "Body before rename.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "search",
+			roots: [corpusRoot],
+			fileNames: ["SKILL.md"],
+			query: "rename",
+			refresh: true,
+		});
+		const initial = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		expect(initial.skills.map((skill) => skill.canonicalName)).toEqual(["before-rename"]);
+		expect(initial.skills[0]?.path).toBe(path.join(corpusRoot, "before-rename", "SKILL.md"));
+
+		fs.renameSync(path.join(corpusRoot, "before-rename"), path.join(corpusRoot, "after-rename"));
+
+		const rebuilt = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
+		expect(rebuilt.sourceSignature).not.toBe(initial.sourceSignature);
+		expect(rebuilt.skills.map((skill) => skill.canonicalName)).toEqual(["before-rename"]);
+		expect(rebuilt.skills[0]?.path).toBe(path.join(corpusRoot, "after-rename", "SKILL.md"));
+		expect(rebuilt.skills[0]?.bodyText).toContain("Body before rename.");
+	});
+
+	/** root 전체 삭제 후 refresh:false가 docCount 0/signature change/stale 부재를 만들고, root 재생성 시 skill이 재등장하는지 검증합니다. */
+	test("detects missing root under refresh:false then reindexes after root recreation", async () => {
+		const corpusRoot = path.join(root, "drift-missing-root");
+		writeSkill(corpusRoot, "root-skill", "Body present before the indexed root disappears.");
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "search",
+			roots: [corpusRoot],
+			fileNames: ["SKILL.md"],
+			query: "root-skill",
+			refresh: true,
+		});
+		const initial = await SERVICE.skillIndexLoader.loadIndex(ctx);
+		expect(initial.docCount).toBe(1);
+		expect(initial.skills.map((skill) => skill.canonicalName)).toEqual(["root-skill"]);
 
 		closeSkillIndex();
 		fs.rmSync(corpusRoot, { recursive: true, force: true });
 
-		const fromCache = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
-		const cachedReview = fromCache.skills.find((skill) => skill.canonicalName === "review");
-		expect(fromCache.docCount).toBe(2);
-		expect(cachedReview).toBeDefined();
-		expect(cachedReview?.bodyText).toContain("Canonical review body");
-		expect(cachedReview?.requires).toEqual(["observability"]);
-		expect(cachedReview?.aliases).toEqual(["review-skill"]);
+		const missing = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
+		const missingResolved = SERVICE.skillSearchEngine.resolveSkills(missing, ["root-skill"], false, 400, 400);
+
+		expect(missing.docCount).toBe(0);
+		expect(missing.sourceSignature).not.toBe(initial.sourceSignature);
+		expect(missing.skills).toEqual([]);
+		expect(missing.skills.find((skill) => skill.canonicalName === "root-skill")).toBeUndefined();
+		expect(missingResolved.resolved).toEqual([]);
+		expect(missingResolved.missing).toEqual(["root-skill"]);
+
+		writeSkill(corpusRoot, "root-skill", "Body restored after the indexed root is recreated.");
+		const restoredPath = path.join(corpusRoot, "root-skill", "SKILL.md");
+		const bumpedAt = new Date(Date.now() + 10_000);
+		fs.utimesSync(restoredPath, bumpedAt, bumpedAt);
+
+		const restored = await SERVICE.skillIndexLoader.loadIndex({ ...ctx, refresh: false });
+		expect(restored.docCount).toBe(1);
+		expect(restored.sourceSignature).not.toBe(missing.sourceSignature);
+		expect(restored.sourceSignature).not.toBe(initial.sourceSignature);
+		expect(restored.skills.map((skill) => skill.canonicalName)).toEqual(["root-skill"]);
+		expect(restored.skills[0]?.bodyText).toContain("Body restored after the indexed root is recreated.");
 	});
 
 	/** refresh true가 snapshot을 무시하고 source rewrite를 반영하는지 검증합니다. */

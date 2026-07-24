@@ -5,6 +5,11 @@ import type { SkillIndexDiagnostics } from "./skill-index-diagnostics";
 import { SkillReadPacketBuilder } from "./skill-read-packet-builder";
 import type { SkillRelationEngine, SkillRelationProjection } from "./skill-relation-engine";
 
+/**
+ * IndexArtifacts fixture가 재사용할 유효한 64-hex sourceSignature입니다.
+ */
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 type FixturePackRow = {
 	name: string;
 	path: string;
@@ -50,6 +55,7 @@ function makeIndex(fixtures: FixturePackRow[]): IndexArtifacts {
 		generatedAt: 1_700_000_000_000,
 		ttlMs: 60_000,
 		requestKey: "read-packet-spec",
+		sourceSignature: VALID_SOURCE_SIGNATURE,
 		settings: makeSettings(),
 		requestedNames: [],
 		skills: fixtures.map(

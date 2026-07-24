@@ -9,6 +9,8 @@ import type { SkillSearchDatabaseService } from "./skill-search-database.service
 
 const SKIP_PATH = path.join(process.cwd(), ".tmp-skill-registry-search-db-");
 
+const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 type EnvSnapshot = NodeJS.ProcessEnv;
 
 function createRoot(): string {
@@ -154,6 +156,7 @@ function makeInput(
 		generatedAt: Date.now(),
 		ttlMs,
 		requestKey,
+		sourceSignature: VALID_SOURCE_SIGNATURE,
 		settings: makeSettings(dbPath),
 		requestedNames: [],
 		skills,
@@ -310,6 +313,7 @@ describe("skill-search-database service", () => {
 		const first = service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1);
 		expect(first).not.toBeNull();
 		expect(first?.skills[0]).toEqual(seed);
+		expect(first?.sourceSignature).toBe(VALID_SOURCE_SIGNATURE);
 		expect(first?.settings).toEqual(makeSettings(databasePath));
 		expect(first?.stats).toEqual(makeStats());
 
@@ -321,6 +325,7 @@ describe("skill-search-database service", () => {
 		expect(second).not.toBeNull();
 		expect(second?.skills).toHaveLength(1);
 		expect(second?.skills[0]).toEqual(seed);
+		expect(second?.sourceSignature).toBe(VALID_SOURCE_SIGNATURE);
 		expect(second?.settings.databasePath).toBe(path.resolve(databasePath));
 		expect(second?.dfByTerm).toBeInstanceOf(Map);
 	});
@@ -345,6 +350,7 @@ describe("skill-search-database service", () => {
 				generatedAt: Date.now() - 100,
 				ttlMs: 10,
 				requestKey,
+				sourceSignature: VALID_SOURCE_SIGNATURE,
 				settings: makeSettings(databasePath),
 				requestedNames: [],
 				skills: [skill],
@@ -389,6 +395,7 @@ describe("skill-search-database service", () => {
 				generatedAt: Date.now(),
 				ttlMs: 60_000,
 				requestKey: "request:stale",
+				sourceSignature: VALID_SOURCE_SIGNATURE,
 				settings: makeSettings(databasePath),
 				requestedNames: [],
 				skills: [seedB],
@@ -401,5 +408,148 @@ describe("skill-search-database service", () => {
 		expect(() => {
 			service.searchTerms(first.snapshotToken, ["observability"]);
 		}).toThrow("SQLite skill index snapshot changed; call loadIndex() before searching");
+	});
+
+	test("round-trips sourceSignature through replaceSnapshot and readSnapshot", async () => {
+		root = createRoot();
+		envSnapshot = { ...process.env };
+		const databasePath = path.join(root, "signature-roundtrip.sqlite");
+		await service.initialize(databasePath);
+
+		const seed = makeSkill({
+			id: "sig-1",
+			canonicalName: "signature-skill",
+			sourceRoot: root,
+			description: "signature round trip",
+			title: "signature-skill",
+			bodyText: "Body for signature persistence.",
+		});
+		const signature = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+		const snapshot = service.replaceSnapshot(
+			{
+				...makeInput(databasePath, "request:signature", [seed], Date.now() - 40),
+				sourceSignature: signature,
+			},
+			[makeDocument(seed)],
+		);
+
+		expect(snapshot.sourceSignature).toBe(signature);
+		const restored = service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1);
+		expect(restored?.sourceSignature).toBe(signature);
+	});
+
+	test("malformed sourceSignature metadata triggers cache miss and owned schema recreation", async () => {
+		root = createRoot();
+		envSnapshot = { ...process.env };
+		const databasePath = path.join(root, "signature-miss.sqlite");
+		await service.initialize(databasePath);
+
+		const seed = makeSkill({
+			id: "sig-miss",
+			canonicalName: "signature-miss",
+			sourceRoot: root,
+			description: "malformed signature",
+			title: "signature-miss",
+			bodyText: "Body for malformed signature.",
+		});
+		const requestKey = "request:signature-miss";
+		const snapshot = service.replaceSnapshot(makeInput(databasePath, requestKey, [seed], Date.now() - 40), [makeDocument(seed)]);
+		expect(service.readSnapshot(snapshot.requestKey, snapshot.generatedAt + 1)).not.toBeNull();
+
+		const requireNodeSqlite = createRequire(import.meta.url);
+		type NodeSqliteModule = {
+			DatabaseSync: new (
+				filename: string,
+			) => {
+				exec: (sql: string) => void;
+				prepare: (sql: string) => {
+					run: (...params: unknown[]) => unknown;
+					all: <T = Record<string, unknown>>() => T[];
+					get: <T = Record<string, unknown>>() => T | null;
+				};
+				close: () => void;
+			};
+		};
+		const { DatabaseSync } = requireNodeSqlite("node:sqlite") as NodeSqliteModule;
+
+		for (const malformedSignature of ["not-a-sha256", "", "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789"]) {
+			closeDb(service);
+			service = createSkillSearchDatabaseService();
+			await service.initialize(databasePath);
+			const fresh = service.replaceSnapshot(makeInput(databasePath, requestKey, [seed], Date.now() - 40), [makeDocument(seed)]);
+
+			closeDb(service);
+			const corruptDb = new DatabaseSync(databasePath);
+			corruptDb.prepare("UPDATE cache_metadata SET source_signature = ? WHERE id = 1;").run(malformedSignature);
+			corruptDb.close();
+
+			service = createSkillSearchDatabaseService();
+			await service.initialize(databasePath);
+			expect(service.readSnapshot(fresh.requestKey, fresh.generatedAt + 1)).toBeNull();
+
+			const checkDb = new DatabaseSync(databasePath);
+			const rows = checkDb.prepare("SELECT * FROM cache_metadata;").all();
+			const columns = checkDb
+				.prepare("SELECT name FROM pragma_table_info('cache_metadata') ORDER BY cid;")
+				.all<{ name: string }>()
+				.map((row) => row.name);
+			const userVersion = checkDb.prepare("PRAGMA user_version;").get<{ user_version?: number; value?: number }>();
+			checkDb.close();
+			expect(rows).toHaveLength(0);
+			expect(columns).toContain("source_signature");
+			expect(Number(userVersion?.user_version ?? userVersion?.value)).toBe(4);
+		}
+	});
+
+	test("recreates owned schema when legacy user_version differs from v4", async () => {
+		root = createRoot();
+		envSnapshot = { ...process.env };
+		const databasePath = path.join(root, "recreate-schema-v4.sqlite");
+
+		const requireNodeSqlite = createRequire(import.meta.url);
+		type NodeSqliteModule = {
+			DatabaseSync: new (
+				filename: string,
+			) => {
+				exec: (sql: string) => void;
+				prepare: (sql: string) => {
+					all: <T = Record<string, unknown>>() => T[];
+					get: <T = Record<string, unknown>>() => T | null;
+				};
+				close: () => void;
+			};
+		};
+		const { DatabaseSync } = requireNodeSqlite("node:sqlite") as NodeSqliteModule;
+		const setupDb = new DatabaseSync(databasePath);
+		setupDb.exec("PRAGMA application_id = 1397445191;");
+		setupDb.exec("PRAGMA user_version = 3;");
+		setupDb.exec(`CREATE TABLE cache_metadata (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			snapshot_token TEXT NOT NULL,
+			request_key TEXT NOT NULL,
+			generated_at INTEGER NOT NULL,
+			ttl_ms INTEGER NOT NULL,
+			settings_json TEXT NOT NULL,
+			requested_names_json TEXT NOT NULL,
+			stats_json TEXT NOT NULL,
+			index_build_ms INTEGER NOT NULL
+		);`);
+		setupDb.exec("INSERT INTO cache_metadata VALUES (1, 'old-token', 'req-old', 123, 456, '{}', '[]', '{}', 0);");
+		setupDb.close();
+
+		await service.initialize(databasePath);
+
+		const checkDb = new DatabaseSync(databasePath);
+		const rows = checkDb.prepare("SELECT * FROM cache_metadata;").all();
+		const columns = checkDb
+			.prepare("SELECT name FROM pragma_table_info('cache_metadata') ORDER BY cid;")
+			.all<{ name: string }>()
+			.map((row) => row.name);
+		const userVersion = checkDb.prepare("PRAGMA user_version;").get<{ user_version?: number; value?: number }>();
+		checkDb.close();
+
+		expect(rows).toHaveLength(0);
+		expect(columns).toContain("source_signature");
+		expect(Number(userVersion?.user_version ?? userVersion?.value)).toBe(4);
 	});
 });

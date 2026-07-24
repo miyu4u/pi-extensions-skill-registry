@@ -1327,6 +1327,10 @@ export type IndexArtifacts = {
 	generatedAt: number;
 	ttlMs: number;
 	requestKey: string;
+	/**
+	 * Filesystem source freshness를 비교하는 deterministic signature입니다.
+	 */
+	sourceSignature: string;
 	settings: Required<SkillRegistrySettings>;
 	requestedNames: string[];
 	/**

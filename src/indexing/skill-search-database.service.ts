@@ -14,7 +14,7 @@ import type {
 } from "./skill-search-database.interface";
 
 const SKILL_REGISTRY_APPLICATION_ID = 1397445191;
-const SKILL_REGISTRY_USER_VERSION = 3;
+const SKILL_REGISTRY_USER_VERSION = 4;
 const DEFAULT_POSIX_DIR_MODE = 0o700;
 const DEFAULT_POSIX_FILE_MODE = 0o600;
 
@@ -33,6 +33,7 @@ interface SqliteSyncConnection {
 interface CacheMetadataRow {
 	snapshot_token: string;
 	request_key: string;
+	source_signature: string;
 	generated_at: number;
 	ttl_ms: number;
 	settings_json: string;
@@ -75,6 +76,7 @@ CREATE TABLE cache_metadata (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   snapshot_token TEXT NOT NULL,
   request_key TEXT NOT NULL,
+  source_signature TEXT NOT NULL,
   generated_at INTEGER NOT NULL,
   ttl_ms INTEGER NOT NULL,
   settings_json TEXT NOT NULL,
@@ -257,6 +259,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 				generatedAt: parsed.generatedAt,
 				ttlMs: parsed.ttlMs,
 				requestKey: parsed.requestKey,
+				sourceSignature: parsed.sourceSignature,
 				settings: parsed.settings,
 				requestedNames: parsed.requestedNames,
 				skills,
@@ -286,6 +289,9 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 	public replaceSnapshot(input: SkillSearchSnapshotInput, documents: SkillSearchDocument[]): SkillSearchSnapshot {
 		if (!this.db) {
 			throw new Error("skill search database is not initialized");
+		}
+		if (!this.isSourceSignature(input.sourceSignature)) {
+			throw new Error("invalid skill search snapshot source signature");
 		}
 
 		const snapshotToken = randomUUID();
@@ -319,10 +325,11 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 
 			this.executeNonQuery(
 				`INSERT INTO cache_metadata
-				 (id, snapshot_token, request_key, generated_at, ttl_ms, settings_json, requested_names_json, stats_json, index_build_ms)
-				 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 (id, snapshot_token, request_key, source_signature, generated_at, ttl_ms, settings_json, requested_names_json, stats_json, index_build_ms)
+				 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				snapshotToken,
 				input.requestKey,
+				input.sourceSignature,
 				input.generatedAt,
 				input.ttlMs,
 				JSON.stringify(persistedSettings),
@@ -391,6 +398,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 			generatedAt: input.generatedAt,
 			ttlMs: input.ttlMs,
 			requestKey: input.requestKey,
+			sourceSignature: input.sourceSignature,
 			settings: persistedSettings,
 			requestedNames: input.requestedNames,
 			skills: orderedSkills.map(({ skill }) => skill),
@@ -489,7 +497,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 
 	private getMetadataRow(): CacheMetadataRow | null {
 		return this.getOne<CacheMetadataRow>(
-			"SELECT id, snapshot_token, request_key, generated_at, ttl_ms, settings_json, requested_names_json, stats_json, index_build_ms FROM cache_metadata WHERE id = 1;",
+			"SELECT id, snapshot_token, request_key, source_signature, generated_at, ttl_ms, settings_json, requested_names_json, stats_json, index_build_ms FROM cache_metadata WHERE id = 1;",
 		);
 	}
 
@@ -498,6 +506,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		generatedAt: number;
 		ttlMs: number;
 		requestKey: string;
+		sourceSignature: string;
 		settings: Required<SkillRegistrySettings>;
 		requestedNames: string[];
 		stats: SkillSearchIndexedStats;
@@ -509,7 +518,7 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 		const requestedNames = this.parseJson<string[]>(row.requested_names_json);
 		const stats = this.parseStatsRow(row.stats_json);
 		const indexBuildMs = this.toFiniteNumber(row.index_build_ms);
-		if (!row.snapshot_token || !row.request_key) {
+		if (!row.snapshot_token || !row.request_key || !this.isSourceSignature(row.source_signature)) {
 			return null;
 		}
 		if (!settings || !this.isStringArray(requestedNames) || !stats || !Number.isFinite(generatedAt) || !Number.isFinite(ttlMs)) {
@@ -524,11 +533,19 @@ export class SkillSearchDatabaseService implements SkillSearchDatabaseInterface 
 			generatedAt,
 			ttlMs,
 			requestKey: row.request_key,
+			sourceSignature: row.source_signature,
 			settings,
 			requestedNames,
 			stats,
 			indexBuildMs,
 		};
+	}
+
+	/**
+	 * 현재 manifest service가 생성하는 SHA-256 lowercase hex contract만 복원합니다.
+	 */
+	private isSourceSignature(value: unknown): value is string {
+		return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 	}
 
 	private parseSkillRow(row: SkillRow): RawSkill | null {

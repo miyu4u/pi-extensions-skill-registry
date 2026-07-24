@@ -6,6 +6,7 @@ import type { SkillFileScanner } from "./skill-file-scanner";
 import { normalizeSkillName } from "./skill-name-normalizer";
 import type { SkillScopeResolverInterface, SkillScopeRootEntry } from "./skill-scope-resolver.interface";
 import type { SkillSearchDatabaseInterface, SkillSearchDocument, SkillSearchSnapshot } from "./skill-search-database.interface";
+import type { SkillSourceScanResult, SourceManifestInterface } from "./source-manifest.interface";
 
 type ScopedIndexedStats = IndexedStats & {
 	scopeDistribution: Record<string, number>;
@@ -22,7 +23,8 @@ export class SkillIndexLoader {
 		private readonly fileScanner: SkillFileScanner,
 		private readonly documentParser: SkillDocumentParser,
 		private readonly activeIndexStore: ActiveIndexStore,
-		private readonly scopeResolver?: SkillScopeResolverInterface,
+		private readonly scopeResolver: SkillScopeResolverInterface,
+		private readonly sourceManifest: SourceManifestInterface,
 	) {}
 
 	/**
@@ -140,10 +142,20 @@ export class SkillIndexLoader {
 		}
 		await this.searchDatabase.initialize(databasePath);
 		this.activeIndexStore.setDatabasePath(databasePath);
+		const sourceScans = this.scanSources(
+			input,
+			explicitScopes,
+			scopeSelection.scopeSet,
+			scopeSelection.safeZero,
+			scopeEntries,
+			scanRequestedSet,
+		);
+		const sourceSignature = this.createSourceSignature(sourceScans);
 
 		if (!input.refresh && this.activeIndexStore.cachedIndex && this.activeIndexStore.cachedIndex.requestKey === requestKey) {
 			const isUnexpired = now - this.activeIndexStore.cachedIndex.generatedAt < this.activeIndexStore.cachedIndex.ttlMs;
-			if (isUnexpired && this.searchDatabase.isSnapshotCurrent(this.activeIndexStore.activeSnapshotToken)) {
+			const isSourceCurrent = this.activeIndexStore.cachedIndex.sourceSignature === sourceSignature;
+			if (isUnexpired && isSourceCurrent && this.searchDatabase.isSnapshotCurrent(this.activeIndexStore.activeSnapshotToken)) {
 				return this.activeIndexStore.cachedIndex;
 			}
 			this.activeIndexStore.clear();
@@ -151,7 +163,7 @@ export class SkillIndexLoader {
 
 		if (!input.refresh) {
 			const persistedSnapshot = this.searchDatabase.readSnapshot(requestKey, now);
-			if (persistedSnapshot) {
+			if (persistedSnapshot?.sourceSignature === sourceSignature) {
 				return this.activateSnapshot(persistedSnapshot);
 			}
 		}
@@ -163,6 +175,7 @@ export class SkillIndexLoader {
 					generatedAt: now,
 					ttlMs: input.settings.cacheTtlMs,
 					requestKey,
+					sourceSignature,
 					settings: input.settings,
 					requestedNames: effectiveNames,
 					skills: [],
@@ -177,15 +190,8 @@ export class SkillIndexLoader {
 		const scopePriorityRank = this.buildScopeRank(input.settings.scopePriority);
 		let indexBuildMode: "targeted" | "full" = shouldFilterByRequestedNames ? "targeted" : "full";
 
-		for (const root of input.roots) {
-			if (
-				explicitScopes &&
-				!scopeSelection.safeZero &&
-				!this.isRootAllowedByExplicitScopes(root, scopeSelection.scopeSet, scopeEntries)
-			) {
-				continue;
-			}
-			const scanResult = this.fileScanner.scan(root, input.fileNames, scanRequestedSet);
+		for (const scanResult of sourceScans) {
+			const root = scanResult.root;
 			if (scanResult.missingRoot) {
 				stats.skippedMissingRoot += 1;
 				continue;
@@ -249,6 +255,7 @@ export class SkillIndexLoader {
 				generatedAt: now,
 				ttlMs: input.settings.cacheTtlMs,
 				requestKey,
+				sourceSignature,
 				settings: input.settings,
 				requestedNames: effectiveNames,
 				skills,
@@ -270,6 +277,7 @@ export class SkillIndexLoader {
 			generatedAt: snapshot.generatedAt,
 			ttlMs: snapshot.ttlMs,
 			requestKey: snapshot.requestKey,
+			sourceSignature: snapshot.sourceSignature,
 			settings: snapshot.settings,
 			requestedNames: snapshot.requestedNames,
 			skills: snapshot.skills,
@@ -283,6 +291,48 @@ export class SkillIndexLoader {
 
 		this.activeIndexStore.activate(indexData, snapshot.snapshotToken);
 		return indexData;
+	}
+
+	/**
+	 * Cache freshness와 rebuild가 동일한 traversal 결과를 공유하도록 root scan을 한 번만 수행합니다.
+	 */
+	private scanSources(
+		input: ToolContext,
+		explicitScopes: boolean,
+		scopeSet: ReadonlySet<string>,
+		safeZero: boolean,
+		scopeEntries: readonly SkillScopeRootEntry[],
+		requestedSet: Set<string>,
+	): SkillSourceScanResult[] {
+		if (safeZero) {
+			return [];
+		}
+		const scans: SkillSourceScanResult[] = [];
+		for (const root of input.roots) {
+			if (explicitScopes && !this.isRootAllowedByExplicitScopes(root, scopeSet, scopeEntries)) {
+				continue;
+			}
+			const scan = this.fileScanner.scan(root, input.fileNames, requestedSet);
+			if (!explicitScopes || scan.missingRoot) {
+				scans.push(scan);
+				continue;
+			}
+			const sourceFiles = scan.sourceFiles.filter((file) => scopeSet.has(this.resolveSkillScope(file.path, scopeEntries)));
+			const includedPaths = new Set(sourceFiles.map((file) => file.path));
+			scans.push({
+				...scan,
+				files: scan.files.filter((file) => includedPaths.has(file)),
+				sourceFiles,
+			});
+		}
+		return scans;
+	}
+
+	/**
+	 * Test doubles의 단계적 전환 중에도 명시적 deterministic service를 우선 사용합니다.
+	 */
+	private createSourceSignature(scans: readonly SkillSourceScanResult[]): string {
+		return this.sourceManifest.createSignature(scans);
 	}
 
 	/**
