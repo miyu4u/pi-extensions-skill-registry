@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { SkillSourceFileIdentity, SkillSourceScanResult } from "./source-manifest.interface";
 
 const SKIP_DIRECTORY_NAMES: Record<string, true> = {
 	".git": true,
@@ -11,25 +12,56 @@ const SKIP_DIRECTORY_NAMES: Record<string, true> = {
 	out: true,
 };
 
-export interface SkillFileScanResult {
-	missingRoot: boolean;
-	mode: "targeted" | "full";
-	files: string[];
-}
-
 /** Skill 문서 후보를 filesystem에서 수집합니다. */
 export class SkillFileScanner {
-	scan(root: string, fileNames: string[], requestedSet: Set<string>): SkillFileScanResult {
+	scan(root: string, fileNames: string[], requestedSet: Set<string>): SkillSourceScanResult {
 		try {
 			if (!fs.statSync(root).isDirectory()) {
-				return { missingRoot: true, mode: requestedSet.size > 0 ? "targeted" : "full", files: [] };
+				return {
+					root,
+					missingRoot: true,
+					mode: requestedSet.size > 0 ? "targeted" : "full",
+					files: [],
+					sourceFiles: [],
+				};
 			}
 		} catch {
-			return { missingRoot: true, mode: requestedSet.size > 0 ? "targeted" : "full", files: [] };
+			return {
+				root,
+				missingRoot: true,
+				mode: requestedSet.size > 0 ? "targeted" : "full",
+				files: [],
+				sourceFiles: [],
+			};
 		}
 
 		const result = this.collectSkillFiles(root, fileNames, requestedSet);
-		return { missingRoot: false, ...result };
+		const sourceFiles = this.collectSourceFileIdentities(result.files);
+		return {
+			root,
+			missingRoot: false,
+			mode: result.mode,
+			files: sourceFiles.map((file) => file.path),
+			sourceFiles,
+		};
+	}
+
+	/**
+	 * Traversal과 parsing 사이에 사라진 file은 현재 manifest와 build 모두에서 제외합니다.
+	 */
+	private collectSourceFileIdentities(files: readonly string[]): SkillSourceFileIdentity[] {
+		const sourceFiles: SkillSourceFileIdentity[] = [];
+		for (const file of files) {
+			try {
+				const stat = fs.statSync(file);
+				if (stat.isFile()) {
+					sourceFiles.push({ path: file, size: stat.size, mtimeMs: stat.mtimeMs });
+				}
+			} catch {
+				// 다음 요청의 manifest scan이 concurrent filesystem 변경을 다시 관측합니다.
+			}
+		}
+		return sourceFiles;
 	}
 
 	private collectSkillFiles(
@@ -46,6 +78,9 @@ export class SkillFileScanner {
 		const extensions = Array.from(new Set(fileNames.map((fileName) => path.extname(fileName).toLowerCase())));
 
 		for (const requestedName of requestedSet) {
+			if (!this.isSafeRequestedName(requestedName)) {
+				continue;
+			}
 			const candidateDir = path.join(root, requestedName);
 			let dirEntries: fs.Dirent[];
 			try {
@@ -89,6 +124,20 @@ export class SkillFileScanner {
 			return { mode: "targeted", files: targeted };
 		}
 		return { mode: "full", files: this.findSkillFiles(root, fileNames) };
+	}
+
+	/**
+	 * Targeted lookup은 corpus root 바로 아래의 canonical name 한 segment만 허용합니다.
+	 */
+	private isSafeRequestedName(requestedName: string): boolean {
+		return (
+			requestedName.length > 0 &&
+			requestedName !== "." &&
+			requestedName !== ".." &&
+			!path.isAbsolute(requestedName) &&
+			!requestedName.includes("/") &&
+			!requestedName.includes("\\")
+		);
 	}
 
 	private findSkillFiles(root: string, fileNames: string[]): string[] {

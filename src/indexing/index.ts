@@ -13,3 +13,5 @@ export * from "./skill-scope-resolver.service";
 export * from "./skill-search-database.interface";
 export * from "./skill-search-database.service";
 export * from "./skill-search-engine";
+export * from "./source-manifest.interface";
+export * from "./source-manifest.service";
