@@ -90,7 +90,7 @@ export const SKILL_REGISTRY_SETTINGS_FILE_PATHS = [".pi/settings/skill-registry"
 export const DEFAULT_SCOPE_ROOTS = {
 	"user-authored:local": ["$cwd"],
 	"user-authored:global": ["$home"],
-	"managed-skills": ["~/.omp/managed-skills"],
+	"managed-skills": ["~/.omp/agent/managed-skills", "~/.omp/managed-skills"],
 } as const;
 
 /** scopeRoot 병합 우선순위를 정의합니다. */
@@ -105,6 +105,7 @@ export const DEFAULT_SETTINGS = {
 		"~/.pi/agent/skills",
 		"~/.omp/agent/skills",
 		"~/.agents/skills",
+		"~/.omp/agent/managed-skills",
 		"~/.omp/managed-skills",
 	],
 	fileNames: DEFAULT_FILE_NAMES,

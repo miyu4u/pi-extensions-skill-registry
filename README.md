@@ -109,8 +109,9 @@ Skill 본문을 작성합니다.
 | 3 | `.agents/skills` | agent workspace skill |
 | 4 | `~/.pi/agent/skills` | Pi user skill |
 | 5 | `~/.omp/agent/skills` | OMP user skill |
-| 6 | `~/.omp/managed-skills` | OMP managed skill |
-| 7 | `~/.agents/skills` | agent fallback skill |
+| 6 | `~/.omp/agent/managed-skills` | OMP runtime managed skill |
+| 7 | `~/.omp/managed-skills` | legacy OMP managed skill |
+| 8 | `~/.agents/skills` | agent fallback skill |
 
 `names`를 지정한 요청은 각 root에서 직접 경로를 우선 확인하고, 모든 이름을 직접 찾지 못한 root에서는 재귀 탐색으로 보완합니다. `names`가 없으면 전체 재귀 탐색을 사용합니다.
 
@@ -121,12 +122,12 @@ Skill 본문을 작성합니다.
 {
   "user-authored:local": ["$cwd"],
   "user-authored:global": ["$home"],
-  "managed-skills": ["~/.omp/managed-skills"]
+  "managed-skills": ["~/.omp/agent/managed-skills", "~/.omp/managed-skills"]
 }
 ```
 
 기본 우선순위는 `user-authored:local > user-authored:global > managed-skills`이며, 입력/설정에서 명시한 순서를 그대로 사용합니다.  
-경로 값은 prefix 기반으로 매칭되므로 `$cwd`/`$home`/`~/.omp/managed-skills`는 각각 `/**` 하위 전체를 담당합니다.
+경로 값은 prefix 기반으로 매칭되므로 `$cwd`/`$home`과 두 managed root는 각각 `/**` 하위 전체를 담당합니다.
 
 `scopePriority`가 빈 배열이거나 항목이 비면 해당 항목만 제외되고, 미기재 scope는 관측된 스코프 뒤에 사전순으로 보존됩니다.
 미지정 스코프(`scopes` 입력 누락)는 모든 effective scope를 대상으로 합니다. explicit 목록에서 empty 항목을 제거한 뒤 알려진 scope가 하나도 남지 않으면 safe-zero로 빈 결과를 반환하며, valid scope와 empty 항목이 섞인 경우 valid scope만 조회합니다.
@@ -157,7 +158,7 @@ Skill 본문을 작성합니다.
     "scopeRoots": {
       "user-authored:local": ["$cwd"],
       "user-authored:global": ["$home"],
-      "managed-skills": ["~/.omp/managed-skills"],
+      "managed-skills": ["~/.omp/agent/managed-skills", "~/.omp/managed-skills"],
       "team-scope": ["./.team/skills"]
     },
     "scopePriority": ["user-authored:local", "user-authored:global", "managed-skills", "team-scope"],

@@ -3,6 +3,5 @@ export const normalizeSkillName = (name: string): string =>
 	name
 		.trim()
 		.replace(/\.md$/i, "")
-		.replace(/^skill[-_]/i, "")
 		.replace(/\s+/g, "-")
 		.toLowerCase();

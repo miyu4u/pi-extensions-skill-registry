@@ -115,7 +115,7 @@ describe("settings loader service", () => {
 		expect(settings.presetSkills).toEqual(["beta"]);
 	});
 
-	test("returns exact seven default roots when no settings supply roots", () => {
+	test("returns default roots when no settings supply roots", () => {
 		setupProject();
 		const ompAgentDir = path.join(root, "agents", "omp-dir");
 		const ompAgentHome = path.join(root, "agents", "omp-home");
@@ -130,6 +130,8 @@ describe("settings loader service", () => {
 		const settings = loader.loadSettings();
 
 		expect(settings.roots).toEqual(DEFAULT_SETTINGS.roots);
+		expect(settings.roots).toContain("~/.omp/agent/managed-skills");
+		expect(settings.roots).toContain("~/.omp/managed-skills");
 		expect(settings.roots.every((rootValue) => !rootValue.includes(".arcana-local"))).toBe(true);
 	});
 
@@ -214,9 +216,28 @@ describe("settings loader service", () => {
 		expect(settings.scopeRoots).toEqual({
 			"user-authored:local": [process.cwd()],
 			"user-authored:global": [os.homedir()],
-			"managed-skills": [path.join(os.homedir(), ".omp", "managed-skills")],
+			"managed-skills": expect.arrayContaining([
+				path.join(os.homedir(), ".omp", "agent", "managed-skills"),
+				path.join(os.homedir(), ".omp", "managed-skills"),
+			]),
 		});
 		expect(settings.scopePriority).toEqual(["user-authored:local", "user-authored:global", "managed-skills"]);
+	});
+
+	/**
+	 * 기본 설정이 런타임 managed-skills 경로와
+	 * 레거시 managed-skills 경로를 모두 포함하는지 검증합니다.
+	 */
+	test("includes both runtime and legacy managed-skills in default scopeRoots and roots", () => {
+		setupProject();
+		writeProjectSetting(".pi/settings.json", {});
+		const settings = loader.loadSettings();
+
+		const expectedRuntimeRoot = path.join(os.homedir(), ".omp", "agent", "managed-skills");
+		const expectedLegacyRoot = path.join(os.homedir(), ".omp", "managed-skills");
+
+		expect(settings.scopeRoots["managed-skills"]).toEqual(expect.arrayContaining([expectedRuntimeRoot, expectedLegacyRoot]));
+		expect(settings.roots).toEqual(expect.arrayContaining([expectedRuntimeRoot, expectedLegacyRoot]));
 	});
 
 	test("loads custom future scopes and merges them with default scope roots", () => {
