@@ -1101,4 +1101,77 @@ describe("SkillIndexLoader scope filtering and stats", () => {
 		expect(scanCount.value).toBe(3);
 		expect(rebuilt.sourceSignature).not.toBe(first.sourceSignature);
 	});
+
+	test("regression: nested managed root under global root is correctly excluded and classified under explicit user-authored:global", async () => {
+		const database = new FakeSearchDatabase();
+		const store = new ActiveIndexStore();
+		const scanCount = { value: 0 };
+		const scannedRoots: string[] = [];
+
+		const scannerOverride: Partial<SkillFileScanner> = {
+			scan: (root: string) => {
+				scannedRoots.push(root);
+				const files = ["/skills/global/SKILL.md", "/skills/global/managed/SKILL.md"];
+				return {
+					root,
+					missingRoot: false,
+					mode: "full",
+					files,
+					sourceFiles: makeSourceFiles(files),
+				};
+			},
+		};
+
+		const parserOverride: Partial<SkillDocumentParser> = {
+			parseSkillFile: (skillFile: string, root: string) => {
+				let name = "unknown";
+				if (skillFile === "/skills/global/SKILL.md") {
+					name = "skill-global";
+				} else if (skillFile === "/skills/global/managed/SKILL.md") {
+					name = "skill-managed";
+				}
+				return {
+					...makeSkill(name),
+					path: skillFile,
+					sourceRoot: root,
+				};
+			},
+		};
+
+		const settings = {
+			roots: ["/skills/global"],
+			scopeRoots: {
+				"user-authored:global": ["/skills/global"],
+				"managed-skills": ["/skills/global/managed"],
+			},
+			scopePriority: ["user-authored:global", "managed-skills"],
+			fileNames: ["SKILL.md"],
+			presetSkills: [],
+			databasePath: "/tmp/loader-nested-managed-regression.sqlite",
+			cacheTtlMs: 60_000,
+			maxTopK: 50,
+			includePreviewBodyChars: 250,
+		};
+
+		const context = makeContext("/tmp/loader-nested-managed-regression.sqlite", {
+			roots: ["/skills/global"],
+			scopes: ["user-authored:global"],
+			scopesExplicit: true,
+			settings,
+		});
+
+		const loader = makeLoader(database, store, scanCount, scannerOverride, parserOverride, resolver);
+		const index = await loader.loadIndex(context);
+
+		expect(scannedRoots).toContain("/skills/global");
+
+		const canonicalNames = index.skills.map((s) => s.canonicalName);
+		expect(canonicalNames).toContain("skill-global");
+		expect(canonicalNames).not.toContain("skill-managed");
+
+		const stats = index.stats as ScopedIndexedStats;
+		expect(stats.scopeDistribution).toEqual({
+			"user-authored:global": 1,
+		});
+	});
 });

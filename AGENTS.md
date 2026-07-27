@@ -189,6 +189,7 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 - skill indexing 및 discovery 상태 점검은 실제 planning skill을 corpus 기준점으로 사용해 discovery, explicit-root index, known canonical resolve를 검증해야 합니다.
 - skill indexing 또는 discovery가 실패하면 source와 실제 loaded plugin artifact의 version 및 bundle identity를 대조하고 stale runtime을 갱신한 뒤 실제 planning skill로 재검증해야 합니다.
 - indexing/discovery 회귀 방지 검증 파이프라인은 source tests뿐 아니라 build된 `dist/main.js`, installed plugin freshness, fresh-process load, 실제 planning canonical resolve를 각각 독립 gate로 계획해야 합니다.
+- explicit scope 조회에서도 path provenance 분류는 모든 configured scope root의 longest-prefix를 사용하고, requested scope는 scan/result filtering에만 적용해야 합니다.
 
 
 <INSTRUCTIONS project="">

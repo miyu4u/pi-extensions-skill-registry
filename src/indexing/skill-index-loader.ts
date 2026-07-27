@@ -47,13 +47,21 @@ export class SkillIndexLoader {
 	async loadIndex(input: ToolContext): Promise<IndexArtifacts> {
 		const normalizedPreset = input.settings.presetSkills.map((name) => normalizeSkillName(name));
 		const explicitScopes = input.scopesExplicit === true;
-		const scopeEntries = this.resolveScopeEntries(
+		/**
+		 * 경로의 실제 provenance는 요청 필터와 무관하게 전체 configured scope 중
+		 * longest-prefix로 판정해야 nested managed root가 상위 global로 재분류되지 않습니다.
+		 */
+		const classificationScopeEntries = this.resolveScopeEntries(input.settings.scopeRoots, input.settings.scopePriority);
+		/**
+		 * 명시 scope 요청은 scan root 축소와 최종 결과 필터에만 사용합니다.
+		 */
+		const selectedScopeEntries = this.resolveScopeEntries(
 			input.settings.scopeRoots,
 			input.settings.scopePriority,
 			explicitScopes ? input.scopes : undefined,
 		);
-		const scopeSelection = this.buildScopeSelection(input, explicitScopes, scopeEntries);
-		const scopedRootMap = this.buildScopeRootMap(scopeEntries);
+		const scopeSelection = this.buildScopeSelection(input, explicitScopes, selectedScopeEntries);
+		const scopedRootMap = this.buildScopeRootMap(selectedScopeEntries);
 		const scopedRoots = this.flattenScopeRoots(scopedRootMap);
 		const scopePriority = this.dedupeValues(input.settings.scopePriority);
 		const shouldUseFullCorpusForQueryDecision =
@@ -147,7 +155,7 @@ export class SkillIndexLoader {
 			explicitScopes,
 			scopeSelection.scopeSet,
 			scopeSelection.safeZero,
-			scopeEntries,
+			selectedScopeEntries,
 			scanRequestedSet,
 		);
 		const sourceSignature = this.createSourceSignature(sourceScans);
@@ -215,7 +223,7 @@ export class SkillIndexLoader {
 					continue;
 				}
 				stats.totalParsed += 1;
-				const skillScope = this.resolveSkillScope(skillFile, scopeEntries);
+				const skillScope = this.resolveSkillScope(skillFile, classificationScopeEntries);
 				candidate.scope = skillScope;
 				if (explicitScopes && !scopeSelection.safeZero && !scopeSelection.scopeSet.has(skillScope)) {
 					continue;
