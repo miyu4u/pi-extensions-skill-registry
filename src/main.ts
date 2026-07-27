@@ -670,7 +670,29 @@ function wireTools(pi: ExtensionAPI): void {
 	});
 }
 
-function wireCommands(_pi: ExtensionAPI): void {}
+function wireCommands(pi: ExtensionAPI): void {
+	pi.registerCommand("skill-registry:reindex", {
+		description: "Effective scope의 skill index를 강제로 갱신합니다.",
+		handler: async (args, context) => {
+			const result = await SERVICE.reindexCommand.execute({ args });
+			context.ui.notify(result.message, result.status === "error" ? "error" : "info");
+		},
+	});
+	pi.registerCommand("skill-registry:discover", {
+		description: "Query와 관련된 skill을 기존 BM25 ranking으로 탐색합니다.",
+		handler: async (args, context) => {
+			const result = await SERVICE.discoverCommand.execute({ args });
+			context.ui.notify(result.message, result.status === "error" ? "error" : "info");
+		},
+	});
+	pi.registerCommand("skill-registry:diagnostics", {
+		description: "현재 skill index의 audit, validation, metrics summary를 표시합니다.",
+		handler: async (args, context) => {
+			const result = await SERVICE.diagnosticsCommand.execute({ args });
+			context.ui.notify(result.message, result.status === "error" ? "error" : "info");
+		},
+	});
+}
 
 function wireHooks(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", async (event) => SERVICE.promptGuidance.handleBeforeAgentStart(event));
