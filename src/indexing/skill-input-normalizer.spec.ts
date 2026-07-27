@@ -195,4 +195,14 @@ describe("SkillInputNormalizer", () => {
 		expect(context.roots).toContain(expectedCwdArchive);
 		expect(context.roots).not.toContain(path.resolve(path.join(os.homedir(), "~archive")));
 	});
+
+	test("when params.roots is a single explicit root, effective roots is exactly that one root and does not merge in settings.roots or scopeRoots", () => {
+		const input: ToolInput = {
+			action: "index",
+			roots: ["/skills/explicit-only"],
+		};
+		const context = normalizer.normalizeToolInput(input);
+		expect(context.roots).toEqual(["/skills/explicit-only"]);
+		expect(context.settings.roots).toEqual(["/skills/explicit-only"]);
+	});
 });

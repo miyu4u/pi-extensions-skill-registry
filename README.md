@@ -360,9 +360,26 @@ bun run test:unit
 bun run test:sqlite
 bun run test:e2e
 bun run test
+bun run verify:artifact
+bun run test:verify
+bun run verify:installed
+bun run verify:pr
 ```
 
 `bun run check:fix`는 typecheck, lint, format을 순서대로 실행합니다. `bun run test`는 unit, SQLite, E2E 테스트를 모두 실행합니다.
+
+### 검증 gate
+
+| Gate | 명령 | Corpus | Load boundary | 실행 환경 |
+| --- | --- | --- | --- | --- |
+| Source contract | `bun run test:unit` / `bun run test:sqlite` | inline·temp fixture | `src` | PR |
+| Artifact | `bun run build` 후 `bun run verify:artifact` | temp planning fixture | built `dist/main.js` | PR |
+| Fresh process | `bun run test:verify` | temp planning fixture | child Bun + built dist | PR |
+| Installed runtime | `bun run verify:installed` | `~/.omp/agent/managed-skills` | installed plugin artifact | release/operator |
+
+PR 기본 순서는 `check → test:unit → test:sqlite → build → verify:artifact → test:verify`이며 `bun run verify:pr`로 묶을 수 있습니다. `verify:artifact`와 `test:verify`는 dist를 암묵적으로 build하지 않으므로 반드시 `bun run build`를 먼저 실행합니다.
+
+`verify:installed`는 repository/`package.json` version, OMP plugin lock version, installed package version, symlink realpath 또는 copied bundle checksum, 그리고 실제 managed planning skill 3개의 fresh-process resolve를 검사합니다. lock drift는 symlink 환경에서도 warning이 아니라 non-zero failure입니다. 복구는 `omp plugin link .` 같은 정상 plugin install/update flow로 맞춘 뒤 **새 OMP process/session**을 시작하세요. `bun run build`만으로는 이미 로드된 in-memory plugin이 reload되지 않습니다.
 
 주요 소스 위치:
 
@@ -373,6 +390,8 @@ bun run test
 - `src/settings/`: 설정 파일 탐색과 정규화
 - `src/results/`: tool result 직렬화
 - `src/prompt/`: prompt guidance hook
+- `scripts/verify/`: dist harness, freshness checker, fresh-process runner, artifact/installed gate
+- `__test__/verify/`: stale bundle·freshness regression test
 
 ## License
 

@@ -173,6 +173,7 @@ export function buildIndexResult(index: IndexArtifacts, limit: number): SkillReg
 			missingFromRequested: index.stats.missingFromRequested,
 			byScope: scopeDistribution,
 			stats: index.stats,
+			queriedRoots: index.settings.roots,
 			indexBuildMs: index.indexBuildMs,
 			time: new Date(index.generatedAt).toISOString(),
 		},

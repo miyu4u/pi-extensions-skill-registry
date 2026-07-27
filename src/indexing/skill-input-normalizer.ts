@@ -66,6 +66,7 @@ export class SkillInputNormalizer {
 			coverageThreshold: params.coverageThreshold ?? 0.7,
 			settings: {
 				...settings,
+				roots: mergedRoots,
 				fileNames: mergedFileNames,
 				includePreviewBodyChars:
 					params.includePreviewBodyChars && params.includePreviewBodyChars > 0

@@ -1,7 +1,7 @@
 {
   "name": "@miyu4u/pi-extensions-skill-registry",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Skill registry extension for SQLite FTS5 skill lookup and BM25 ranking",
   "module": "src/main.ts",
   "main": "./dist/main.js",
@@ -39,7 +39,11 @@
     "test": "bun run test:unit && bun run test:sqlite && bun run test:e2e",
     "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.json --passWithNoTests",
     "test:sqlite": "bun test src/indexing/skill-search-database.bun.spec.ts",
-    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config __test__/jest.e2e-config.json --passWithNoTests"
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config __test__/jest.e2e-config.json --passWithNoTests",
+    "test:verify": "bun test __test__/verify",
+    "verify:artifact": "bun scripts/verify/verify-artifact.ts",
+    "verify:installed": "bun scripts/verify/verify-installed.ts",
+    "verify:pr": "bun run check && bun run test:unit && bun run test:sqlite && bun run build && bun run verify:artifact && bun run test:verify"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.81.1"

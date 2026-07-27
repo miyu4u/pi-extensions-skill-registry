@@ -50,6 +50,8 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
   - `results/`: result serialization helper를 제공합니다.
   - `shared/`: cross-cutting constant와 type만 보관하며 `index.ts`로 concern을 노출합니다.
 - `__test__/`: e2e test와 e2e Jest configuration을 보관합니다.
+  - `__test__/verify/`: built dist와 freshness checker의 Bun regression test를 보관합니다.
+- `scripts/verify/`: dist registration harness, planning fixture, freshness checker, fresh-process runner, `verify:artifact`/`verify:installed` gate를 보관합니다.
 - `docs/research/`: research report를 보관합니다.
 - `docs/plans/`: implementation plan을 보관합니다.
 - `tsconfig.json`: standalone TypeScript config입니다. parent workspace file을 extend해서는 안 됩니다.
@@ -129,6 +131,10 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 - `bun run test:e2e` : e2e test
 - `bun run test` : unit, SQLite, e2e test 전체 실행
 - `bun run build` : extension bundle build
+- `bun run verify:artifact` : built `dist/main.js` registration과 fixture planning corpus 검증 (build 선행 필요)
+- `bun run test:verify` : fresh-process/stale-bundle·freshness Bun regression (build 선행 필요)
+- `bun run verify:installed` : installed plugin freshness와 real managed corpus smoke (release/operator)
+- `bun run verify:pr` : PR gate 순서 (`check` → unit/sqlite → `build` → `verify:artifact` → `test:verify`)
 
 ## VERIFICATION
 
@@ -138,6 +144,10 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 - `bun run test:e2e`로 host runtime에서 tool과 prompt hook registration을 검증합니다.
 - `bun run test`로 위 unit, SQLite, e2e test를 함께 검증합니다.
 - `bun run build`로 `src/main.ts` bundle과 host-owned `@earendil-works/*` runtime boundary를 검증합니다.
+- `bun run verify:artifact`로 built `dist/main.js`를 fake ExtensionAPI에 register하고 planning discover/index/resolve structured details를 검증합니다. 이 명령은 dist를 암묵 build하지 않습니다.
+- `bun run test:verify`로 child Bun fresh-process isolation과 stale bundle failure regression을 검증합니다.
+- `bun run verify:installed`로 repository/lock/installed version, symlink·checksum identity, 실제 managed planning corpus resolve를 검증합니다.
+- stale in-memory plugin은 `bun run build`만으로 reload되지 않으므로 operator는 plugin link/reinstall 후 새 OMP process/session이 필요합니다.
 
 ## CAUTIONS
 
@@ -161,6 +171,7 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 
 ## APPENDED RULES
 
+- `reindex(index)`, `discover`, `diagnostics` command 기능은 command 기반 공통 interface를 먼저 정의하고, 각 command의 독립 service를 구현·확장한 뒤 command-service wiring 순서로 구성해야 합니다.
 - 사용자가 특정 plan 문서의 최신화를 지시하면 실제 repository contract, 구현, tests, scripts를 대조하고 검증 시각과 구현 상태를 plan에 기록해야 합니다.
 - `skill-registry`는 legacy `extensions` 경로로 직접 등록하지 않고 OMP `plugins` package로 설치·관리해야 합니다.
 - unknown `skill://<name>` recovery는 host `read` resolver와 extension `resolve` ownership을 분리해야 합니다.
@@ -172,6 +183,10 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 - index cache metadata에는 `scopeRoots`/`scopePriority` 스냅샷을 보존하고, 복원/파싱 실패(특히 scope 관련 필드 포함) 시 캐시를 재생성해야 합니다.
 - Filesystem source 삭제·추가·rename·stat 변경과 root 생성·삭제는 다음 `loadIndex()`에서 source manifest mismatch로 감지하며, active/SQLite snapshot은 signature가 일치할 때만 재사용해야 합니다.
 - 커밋 정리는 파일 수가 아니라 독립적으로 설명하고 검증할 수 있는 의미 있는 변경 단위로 묶어야 합니다.
+- skill indexing 및 discovery는 OMP runtime managed root인 `~/.omp/agent/managed-skills`를 기본 corpus와 `managed-skills` scope에 포함하고, legacy `~/.omp/managed-skills` 경로도 함께 지원해야 합니다.
+- skill indexing 및 discovery 상태 점검은 실제 planning skill을 corpus 기준점으로 사용해 discovery, explicit-root index, known canonical resolve를 검증해야 합니다.
+- skill indexing 또는 discovery가 실패하면 source와 실제 loaded plugin artifact의 version 및 bundle identity를 대조하고 stale runtime을 갱신한 뒤 실제 planning skill로 재검증해야 합니다.
+- indexing/discovery 회귀 방지 검증 파이프라인은 source tests뿐 아니라 build된 `dist/main.js`, installed plugin freshness, fresh-process load, 실제 planning canonical resolve를 각각 독립 gate로 계획해야 합니다.
 
 
 <INSTRUCTIONS project="">

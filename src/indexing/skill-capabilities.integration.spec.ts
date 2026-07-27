@@ -835,4 +835,28 @@ describe("skill-index service", () => {
 			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
 		}
 	});
+
+	test("resolves canonical planning skills in non-alphabetical request order with empty missing", async () => {
+		const name1 = "skill-registry-cache-invalidation-planning";
+		const name2 = "skill-registry-runtime-verification-planning";
+		const name3 = "pi-extension-canonical-planning";
+
+		writeSkill(root, name1, "planning implementation plans architecture cache invalidation");
+		writeSkill(root, name2, "planning implementation plans architecture task decomposition runtime verification");
+		writeSkill(root, name3, "planning implementation plans architecture task decomposition pi extension canonical");
+
+		const ctx = SERVICE.skillInputNormalizer.normalizeToolInput({
+			action: "resolve",
+			roots: [root],
+			fileNames: ["SKILL.md"],
+			refresh: true,
+		});
+		const artifacts = await SERVICE.skillIndexLoader.loadIndex(ctx);
+
+		const requestOrder = [name2, name3, name1];
+		const result = SERVICE.skillSearchEngine.resolveSkills(artifacts, requestOrder, false, 400, 400);
+
+		expect(result.resolved.map((entry) => entry.name)).toEqual(requestOrder);
+		expect(result.missing).toEqual([]);
+	});
 });
