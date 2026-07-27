@@ -10,6 +10,8 @@ import { writePlanningFixtureCorpus } from "./planning-fixture";
 
 const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const DIST_BUNDLE = path.join(REPOSITORY_ROOT, "dist", "main.js");
+/** Built artifact가 노출해야 하는 namespaced slash command 목록입니다. */
+const EXPECTED_COMMAND_NAMES = ["skill-registry:reindex", "skill-registry:discover", "skill-registry:diagnostics"] as const;
 
 /**
  * PR gate용 artifact verification입니다.
@@ -34,6 +36,11 @@ async function main(): Promise<void> {
 
 	try {
 		const harness = await loadDistHarness(DIST_BUNDLE);
+		for (const commandName of EXPECTED_COMMAND_NAMES) {
+			if (!harness.commandNames.includes(commandName)) {
+				throw new Error(`verify:artifact missing command registration: ${commandName}`);
+			}
+		}
 		const sameProcess = await runPlanningCorpusContract({
 			execute: harness.execute,
 			roots: [corpusRoot],
