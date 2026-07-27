@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, test } from "@jest/globals";
+import { afterEach, describe, expect, jest, test } from "@jest/globals";
 import register from "./main";
 import type {
 	SkillReadResultCompactorReplacement,
@@ -19,6 +19,11 @@ const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 type EnvSnapshot = NodeJS.ProcessEnv;
 
 type ToolResult = SkillRegistryToolResult;
+
+type RegisteredCommand = {
+	description?: string;
+	handler: (args: unknown, context: { ui: { notify: (message: string, type?: string) => void } }) => Promise<void>;
+};
 
 type RegisteredTool = {
 	name?: string;
@@ -50,14 +55,19 @@ function registerHarness(): {
 	tools: Array<RegisteredTool>;
 	beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined;
 	toolResultHandler: ToolResultHandler | undefined;
+	commands: Record<string, RegisteredCommand>;
 } {
 	const tools: Array<RegisteredTool> = [];
+	const commands: Record<string, RegisteredCommand> = {};
 	let beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined;
 	let toolResultHandler: ToolResultHandler | undefined;
 
 	const pi = {
 		registerTool(tool: unknown) {
 			tools.push(tool as RegisteredTool);
+		},
+		registerCommand(name: string, options: RegisteredCommand) {
+			commands[name] = options;
 		},
 		on(eventName: string, handler: unknown) {
 			if (eventName === "before_agent_start") {
@@ -72,7 +82,7 @@ function registerHarness(): {
 
 	register(pi);
 
-	return { tools, beforeAgentStart, toolResultHandler };
+	return { tools, beforeAgentStart, toolResultHandler, commands };
 }
 
 function closeSkillIndex(): void {
@@ -104,9 +114,9 @@ describe("main entrypoint integration", () => {
 		}
 	});
 
-	test("registers the skill_registry tool and before_agent_start hook directly", () => {
+	test("registers the skill_registry tool and before_agent_start hook directly", async () => {
 		envSnapshot = { ...process.env };
-		const { tools, beforeAgentStart, toolResultHandler } = registerHarness();
+		const { tools, beforeAgentStart, toolResultHandler, commands } = registerHarness();
 
 		expect(tools).toHaveLength(1);
 		expect(tools[0]?.name).toBe("skill_registry");
@@ -120,6 +130,46 @@ describe("main entrypoint integration", () => {
 		expect(typeof beforeAgentStart).toBe("function");
 		expect(toolResultHandler).toBeDefined();
 		expect(typeof toolResultHandler).toBe("function");
+
+		// Assert command registrations
+		expect(commands).toBeDefined();
+		expect(commands["skill-registry:reindex"]).toBeDefined();
+		expect(commands["skill-registry:discover"]).toBeDefined();
+		expect(commands["skill-registry:diagnostics"]).toBeDefined();
+		expect(commands.reindex).toBeUndefined();
+		expect(commands.discover).toBeUndefined();
+		expect(commands.diagnostics).toBeUndefined();
+		expect(commands["skill-registry:reindex"]?.description).toBe("Effective scope의 skill index를 강제로 갱신합니다.");
+		expect(commands["skill-registry:discover"]?.description).toBe("Query와 관련된 skill을 기존 BM25 ranking으로 탐색합니다.");
+		expect(commands["skill-registry:diagnostics"]?.description).toBe(
+			"현재 skill index의 audit, validation, metrics summary를 표시합니다.",
+		);
+
+		// Invoke one handler with fake context.ui.notify and a temporary SERVICE command execute spy
+		const originalExecute = SERVICE.reindexCommand.execute;
+		const mockExecute = jest.fn<typeof originalExecute>().mockResolvedValue({
+			kind: "reindex",
+			status: "success",
+			message: "Reindex complete",
+		});
+		SERVICE.reindexCommand.execute = mockExecute as unknown as typeof originalExecute;
+
+		const notifyCalls: [string, string?][] = [];
+		const fakeContext = {
+			ui: {
+				notify: (message: string, type?: string) => {
+					notifyCalls.push([message, type]);
+				},
+			},
+		};
+
+		try {
+			await commands["skill-registry:reindex"]?.handler("", fakeContext);
+			expect(mockExecute).toHaveBeenCalledWith({ args: "" });
+			expect(notifyCalls).toEqual([["Reindex complete", "info"]]);
+		} finally {
+			SERVICE.reindexCommand.execute = originalExecute;
+		}
 	});
 
 	test("executes discover action through the registered tool", async () => {

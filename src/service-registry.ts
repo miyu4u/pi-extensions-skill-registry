@@ -1,3 +1,4 @@
+import { DiagnosticsCommandService, DiscoverCommandService, ReindexCommandService } from "./commands";
 import {
 	ActiveIndexStore,
 	SkillDecisionEngine,
@@ -52,6 +53,20 @@ const skillIndexLoader = new SkillIndexLoader(
 	skillScopeResolver,
 	sourceManifest,
 );
+const reindexCommand = new ReindexCommandService({
+	inputNormalizer: skillInputNormalizer,
+	indexLoader: skillIndexLoader,
+});
+const discoverCommand = new DiscoverCommandService({
+	inputNormalizer: skillInputNormalizer,
+	indexLoader: skillIndexLoader,
+	searchEngine: skillSearchEngine,
+});
+const diagnosticsCommand = new DiagnosticsCommandService({
+	inputNormalizer: skillInputNormalizer,
+	indexLoader: skillIndexLoader,
+	indexDiagnostics: skillIndexDiagnostics,
+});
 export const SERVICE = {
 	settingsLoader,
 	englishFuzzyMatcher,
@@ -71,4 +86,7 @@ export const SERVICE = {
 	skillReadPacketBuilder,
 	skillExecutionPacketBuilder,
 	skillScopeResolver,
+	reindexCommand,
+	discoverCommand,
+	diagnosticsCommand,
 } as const;

@@ -15,7 +15,7 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 
 - skill root를 수집해 SQLite FTS5 index를 만들고 BM25 ranking과 deterministic tie-break를 제공합니다.
 - canonical name과 alias를 exact resolve하고 `requires`, `recommends`, `related` 관계를 탐색합니다.
-- `skill_registry` 하나의 tool과 `before_agent_start`, `before_provider_request` prompt hook을 등록하며 별도 slash command는 등록하지 않습니다.
+- `skill_registry` tool, `before_agent_start`와 `before_provider_request` prompt hook, namespaced slash command(`/skill-registry:reindex`, `/skill-registry:discover`, `/skill-registry:diagnostics`)를 등록합니다.
 
 ## STRUCTURE
 
@@ -24,6 +24,7 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
   - `schema.ts`: `skill_registry` tool input schema의 single source of truth입니다.
   - `extension.interface.ts`: package-local `PiExtensionContract`를 정의합니다.
   - `service-registry.ts`: indexing, tokenization, prompt, settings service를 생성하고 dependency wiring을 담당하는 composition root입니다.
+  - `commands/`: 공통 command contract와 reindex, discover, diagnostics command service를 소유합니다.
   - `indexing/`: corpus indexing, SQLite FTS5 persistence, search, relation expansion, diagnostics, decision, read packet, execution packet을 담당합니다.
     - `skill-input-normalizer.ts`: tool input을 settings 기반 execution context로 정규화합니다.
     - `skill-scope-resolver.interface.ts`: scope-root 해석 계약을 정의합니다.
@@ -171,6 +172,7 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 
 ## APPENDED RULES
 
+- Slash command 이름은 `/skill-registry:$command_name` namespace를 사용해야 하며 unnamespaced command를 등록해서는 안 됩니다.
 - `reindex(index)`, `discover`, `diagnostics` command 기능은 command 기반 공통 interface를 먼저 정의하고, 각 command의 독립 service를 구현·확장한 뒤 command-service wiring 순서로 구성해야 합니다.
 - 사용자가 특정 plan 문서의 최신화를 지시하면 실제 repository contract, 구현, tests, scripts를 대조하고 검증 시각과 구현 상태를 plan에 기록해야 합니다.
 - `skill-registry`는 legacy `extensions` 경로로 직접 등록하지 않고 OMP `plugins` package로 설치·관리해야 합니다.

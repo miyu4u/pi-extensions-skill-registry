@@ -21,6 +21,7 @@ export type CapturedSkillRegistryExecute = (
 export type DistHarness = {
 	execute: CapturedSkillRegistryExecute;
 	bundlePath: string;
+	commandNames: string[];
 };
 
 /**
@@ -37,12 +38,16 @@ export async function loadDistHarness(bundlePath: string): Promise<DistHarness> 
 	}
 
 	let execute: CapturedSkillRegistryExecute | undefined;
+	const commandNames: string[] = [];
 	const pi = {
 		registerTool(tool: unknown) {
 			const registered = tool as { name?: string; execute?: CapturedSkillRegistryExecute };
 			if (registered.name === "skill_registry" && typeof registered.execute === "function") {
 				execute = registered.execute;
 			}
+		},
+		registerCommand(name: string) {
+			commandNames.push(name);
 		},
 		on() {},
 	} as unknown as ExtensionAPI;
@@ -55,5 +60,6 @@ export async function loadDistHarness(bundlePath: string): Promise<DistHarness> 
 	return {
 		execute,
 		bundlePath: absoluteBundlePath,
+		commandNames,
 	};
 }
