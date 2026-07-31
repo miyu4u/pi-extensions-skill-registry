@@ -1,371 +1,368 @@
-import fs from "node:fs";
-import path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, describe, expect, jest, test } from "@jest/globals";
-import register from "./main";
+import fs from 'node:fs'
+import path from 'node:path'
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
+import { afterEach, describe, expect, jest, test } from '@jest/globals'
+import register from './main'
 import type {
-	SkillReadResultCompactorReplacement,
-	SkillReadResultCompactorToolResult,
-} from "./results/skill-read-result-compactor.interface";
-import { SkillRegistryToolContract } from "./schema";
-import { SERVICE } from "./service-registry";
-import type { SkillRegistryToolResult } from "./shared";
+  SkillReadResultCompactorReplacement,
+  SkillReadResultCompactorToolResult,
+} from './results/skill-read-result-compactor.interface'
+import { SkillRegistryToolContract } from './schema'
+import { SERVICE } from './service-registry'
+import type { SkillRegistryToolResult } from './shared'
 
 /**
  * IndexArtifacts fixture가 재사용할 유효한 64-hex sourceSignature입니다.
  */
-const VALID_SOURCE_SIGNATURE = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const VALID_SOURCE_SIGNATURE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
-type EnvSnapshot = NodeJS.ProcessEnv;
+type EnvSnapshot = NodeJS.ProcessEnv
 
-type ToolResult = SkillRegistryToolResult;
+type ToolResult = SkillRegistryToolResult
 
 type RegisteredCommand = {
-	description?: string;
-	handler: (args: unknown, context: { ui: { notify: (message: string, type?: string) => void } }) => Promise<void>;
-};
+  description?: string
+  handler: (args: unknown, context: { ui: { notify: (message: string, type?: string) => void } }) => Promise<void>
+}
 
 type RegisteredTool = {
-	name?: string;
-	label?: string;
-	description?: string;
-	parameters?: unknown;
-	execute?: (...args: unknown[]) => Promise<ToolResult>;
-};
+  name?: string
+  label?: string
+  description?: string
+  parameters?: unknown
+  execute?: (...args: unknown[]) => Promise<ToolResult>
+}
 
-type ToolResultHandler = (event: SkillReadResultCompactorToolResult) => SkillReadResultCompactorReplacement | undefined;
+type ToolResultHandler = (event: SkillReadResultCompactorToolResult) => SkillReadResultCompactorReplacement | undefined
 
 /** 등록된 tool text payload 추출 helper입니다. */
 function textFromResult(result: ToolResult): string {
-	return result.content.find((item): item is { type: "text"; text: string } => item.type === "text")?.text ?? "";
+  return result.content.find((item): item is { type: 'text'; text: string } => item.type === 'text')?.text ?? ''
 }
 
 /** 임시 skill 문서를 작성합니다. */
 function writeSkill(root: string, name: string, body: string): void {
-	const dir = path.join(root, name);
-	fs.mkdirSync(dir, { recursive: true });
-	fs.writeFileSync(
-		path.join(dir, "SKILL.md"),
-		["---", `name: ${name}`, "description: test skill", "---", `# ${name}`, "", body].join("\n"),
-		"utf-8",
-	);
+  const dir = path.join(root, name)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, 'SKILL.md'),
+    ['---', `name: ${name}`, 'description: test skill', '---', `# ${name}`, '', body].join('\n'),
+    'utf-8',
+  )
 }
 
 function registerHarness(): {
-	tools: Array<RegisteredTool>;
-	beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined;
-	toolResultHandler: ToolResultHandler | undefined;
-	commands: Record<string, RegisteredCommand>;
+  tools: Array<RegisteredTool>
+  beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined
+  toolResultHandler: ToolResultHandler | undefined
+  commands: Record<string, RegisteredCommand>
 } {
-	const tools: Array<RegisteredTool> = [];
-	const commands: Record<string, RegisteredCommand> = {};
-	let beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined;
-	let toolResultHandler: ToolResultHandler | undefined;
+  const tools: Array<RegisteredTool> = []
+  const commands: Record<string, RegisteredCommand> = {}
+  let beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined
+  let toolResultHandler: ToolResultHandler | undefined
 
-	const pi = {
-		registerTool(tool: unknown) {
-			tools.push(tool as RegisteredTool);
-		},
-		registerCommand(name: string, options: RegisteredCommand) {
-			commands[name] = options;
-		},
-		on(eventName: string, handler: unknown) {
-			if (eventName === "before_agent_start") {
-				beforeAgentStart = handler as (event: { systemPrompt?: string | readonly string[] }) => unknown;
-			} else if (eventName === "tool_result") {
-				toolResultHandler = (event) =>
-					(handler as (event: SkillReadResultCompactorToolResult) => SkillReadResultCompactorReplacement | null)(event) ??
-					undefined;
-			}
-		},
-	} as unknown as ExtensionAPI;
+  const pi = {
+    registerTool(tool: unknown) {
+      tools.push(tool as RegisteredTool)
+    },
+    registerCommand(name: string, options: RegisteredCommand) {
+      commands[name] = options
+    },
+    on(eventName: string, handler: unknown) {
+      if (eventName === 'before_agent_start') {
+        beforeAgentStart = handler as (event: { systemPrompt?: string | readonly string[] }) => unknown
+      } else if (eventName === 'tool_result') {
+        toolResultHandler = (event) =>
+          (handler as (event: SkillReadResultCompactorToolResult) => SkillReadResultCompactorReplacement | null)(event) ?? undefined
+      }
+    },
+  } as unknown as ExtensionAPI
 
-	register(pi);
+  register(pi)
 
-	return { tools, beforeAgentStart, toolResultHandler, commands };
+  return { tools, beforeAgentStart, toolResultHandler, commands }
 }
 
 function closeSkillIndex(): void {
-	SERVICE.skillIndexLoader.close();
+  SERVICE.skillIndexLoader.close()
 }
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {
-	const keys = new Set([...Object.keys(process.env), ...Object.keys(snapshot)]);
-	for (const key of keys) {
-		const value = snapshot[key];
-		if (typeof value === "undefined") {
-			delete process.env[key];
-		} else {
-			process.env[key] = value;
-		}
-	}
+  const keys = new Set([...Object.keys(process.env), ...Object.keys(snapshot)])
+  for (const key of keys) {
+    const value = snapshot[key]
+    if (typeof value === 'undefined') {
+      delete process.env[key]
+    } else {
+      process.env[key] = value
+    }
+  }
 }
 
-describe("main entrypoint integration", () => {
-	let root = "";
-	let envSnapshot: EnvSnapshot = {};
+describe('main entrypoint integration', () => {
+  let root = ''
+  let envSnapshot: EnvSnapshot = {}
 
-	afterEach(() => {
-		closeSkillIndex();
-		restoreEnvironment(envSnapshot);
-		if (root) {
-			fs.rmSync(root, { recursive: true, force: true });
-			root = "";
-		}
-	});
+  afterEach(() => {
+    closeSkillIndex()
+    restoreEnvironment(envSnapshot)
+    if (root) {
+      fs.rmSync(root, { recursive: true, force: true })
+      root = ''
+    }
+  })
 
-	test("registers the skill_registry tool and before_agent_start hook directly", async () => {
-		envSnapshot = { ...process.env };
-		const { tools, beforeAgentStart, toolResultHandler, commands } = registerHarness();
+  test('registers the skill_registry tool and before_agent_start hook directly', async () => {
+    envSnapshot = { ...process.env }
+    const { tools, beforeAgentStart, toolResultHandler, commands } = registerHarness()
 
-		expect(tools).toHaveLength(1);
-		expect(tools[0]?.name).toBe("skill_registry");
-		expect(tools[0]?.label).toBe(SkillRegistryToolContract.label);
-		expect(tools[0]?.description).toBe(SkillRegistryToolContract.description);
-		const serializedParameters = JSON.stringify(tools[0]?.parameters);
-		expect(serializedParameters).toContain('"discover"');
-		expect(serializedParameters).toContain('"verification-packet"');
-		expect(serializedParameters).not.toContain('"trim":true');
-		expect(beforeAgentStart).toBeDefined();
-		expect(typeof beforeAgentStart).toBe("function");
-		expect(toolResultHandler).toBeDefined();
-		expect(typeof toolResultHandler).toBe("function");
+    expect(tools).toHaveLength(1)
+    expect(tools[0]?.name).toBe('skill_registry')
+    expect(tools[0]?.label).toBe(SkillRegistryToolContract.label)
+    expect(tools[0]?.description).toBe(SkillRegistryToolContract.description)
+    const serializedParameters = JSON.stringify(tools[0]?.parameters)
+    expect(serializedParameters).toContain('"discover"')
+    expect(serializedParameters).toContain('"verification-packet"')
+    expect(serializedParameters).not.toContain('"trim":true')
+    expect(beforeAgentStart).toBeDefined()
+    expect(typeof beforeAgentStart).toBe('function')
+    expect(toolResultHandler).toBeDefined()
+    expect(typeof toolResultHandler).toBe('function')
 
-		// Assert command registrations
-		expect(commands).toBeDefined();
-		expect(commands["skill-registry:reindex"]).toBeDefined();
-		expect(commands["skill-registry:discover"]).toBeDefined();
-		expect(commands["skill-registry:diagnostics"]).toBeDefined();
-		expect(commands.reindex).toBeUndefined();
-		expect(commands.discover).toBeUndefined();
-		expect(commands.diagnostics).toBeUndefined();
-		expect(commands["skill-registry:reindex"]?.description).toBe("Effective scope의 skill index를 강제로 갱신합니다.");
-		expect(commands["skill-registry:discover"]?.description).toBe("Query와 관련된 skill을 기존 BM25 ranking으로 탐색합니다.");
-		expect(commands["skill-registry:diagnostics"]?.description).toBe(
-			"현재 skill index의 audit, validation, metrics summary를 표시합니다.",
-		);
+    // Assert command registrations
+    expect(commands).toBeDefined()
+    expect(commands['skill-registry:reindex']).toBeDefined()
+    expect(commands['skill-registry:discover']).toBeDefined()
+    expect(commands['skill-registry:diagnostics']).toBeDefined()
+    expect(commands.reindex).toBeUndefined()
+    expect(commands.discover).toBeUndefined()
+    expect(commands.diagnostics).toBeUndefined()
+    expect(commands['skill-registry:reindex']?.description).toBe('Effective scope의 skill index를 강제로 갱신합니다.')
+    expect(commands['skill-registry:discover']?.description).toBe('Query와 관련된 skill을 기존 BM25 ranking으로 탐색합니다.')
+    expect(commands['skill-registry:diagnostics']?.description).toBe('현재 skill index의 audit, validation, metrics summary를 표시합니다.')
 
-		// Invoke one handler with fake context.ui.notify and a temporary SERVICE command execute spy
-		const originalExecute = SERVICE.reindexCommand.execute;
-		const mockExecute = jest.fn<typeof originalExecute>().mockResolvedValue({
-			kind: "reindex",
-			status: "success",
-			message: "Reindex complete",
-		});
-		SERVICE.reindexCommand.execute = mockExecute as unknown as typeof originalExecute;
+    // Invoke one handler with fake context.ui.notify and a temporary SERVICE command execute spy
+    const originalExecute = SERVICE.reindexCommand.execute
+    const mockExecute = jest.fn<typeof originalExecute>().mockResolvedValue({
+      kind: 'reindex',
+      status: 'success',
+      message: 'Reindex complete',
+    })
+    SERVICE.reindexCommand.execute = mockExecute as unknown as typeof originalExecute
 
-		const notifyCalls: [string, string?][] = [];
-		const fakeContext = {
-			ui: {
-				notify: (message: string, type?: string) => {
-					notifyCalls.push([message, type]);
-				},
-			},
-		};
+    const notifyCalls: [string, string?][] = []
+    const fakeContext = {
+      ui: {
+        notify: (message: string, type?: string) => {
+          notifyCalls.push([message, type])
+        },
+      },
+    }
 
-		try {
-			await commands["skill-registry:reindex"]?.handler("", fakeContext);
-			expect(mockExecute).toHaveBeenCalledWith({ args: "" });
-			expect(notifyCalls).toEqual([["Reindex complete", "info"]]);
-		} finally {
-			SERVICE.reindexCommand.execute = originalExecute;
-		}
-	});
+    try {
+      await commands['skill-registry:reindex']?.handler('', fakeContext)
+      expect(mockExecute).toHaveBeenCalledWith({ args: '' })
+      expect(notifyCalls).toEqual([['Reindex complete', 'info']])
+    } finally {
+      SERVICE.reindexCommand.execute = originalExecute
+    }
+  })
 
-	test("executes discover action through the registered tool", async () => {
-		envSnapshot = { ...process.env };
-		root = fs.mkdtempSync(path.join(process.cwd(), ".tmp-skill-registry-main-"));
-		process.env.OMP_AGENT_DIR = path.join(root, "agent-cache");
-		process.env.OMP_AGENT_HOME = "";
-		process.env.PI_CODING_AGENT_DIR = "";
-		writeSkill(root, "alpha", "Security review guidance for runtime teams.");
-		const { tools } = registerHarness();
-		const tool = tools[0];
-		if (!tool?.execute) {
-			throw new Error("expected registered tool execute handler");
-		}
+  test('executes discover action through the registered tool', async () => {
+    envSnapshot = { ...process.env }
+    root = fs.mkdtempSync(path.join(process.cwd(), '.tmp-skill-registry-main-'))
+    process.env.OMP_AGENT_DIR = path.join(root, 'agent-cache')
+    process.env.OMP_AGENT_HOME = ''
+    process.env.PI_CODING_AGENT_DIR = ''
+    writeSkill(root, 'alpha', 'Security review guidance for runtime teams.')
+    const { tools } = registerHarness()
+    const tool = tools[0]
+    if (!tool?.execute) {
+      throw new Error('expected registered tool execute handler')
+    }
 
-		const result = await tool.execute(
-			"tool-call-1",
-			{
-				action: "discover",
-				query: "security review",
-				roots: [root],
-				fileNames: ["SKILL.md"],
-				refresh: true,
-			},
-			undefined,
-			undefined,
-			undefined,
-		);
+    const result = await tool.execute(
+      'tool-call-1',
+      {
+        action: 'discover',
+        query: 'security review',
+        roots: [root],
+        fileNames: ['SKILL.md'],
+        refresh: true,
+      },
+      undefined,
+      undefined,
+      undefined,
+    )
 
-		expect(textFromResult(result)).toContain("skill://alpha");
-	});
+    expect(textFromResult(result)).toContain('skill://alpha')
+  })
 
-	test("blocks query-only actions on small/medium taskSize and skips loadIndex", async () => {
-		envSnapshot = { ...process.env };
-		root = fs.mkdtempSync(path.join(process.cwd(), ".tmp-skill-registry-main-"));
-		process.env.OMP_AGENT_DIR = path.join(root, "agent-cache");
-		process.env.OMP_AGENT_HOME = "";
-		process.env.PI_CODING_AGENT_DIR = "";
-		let loadIndexCalled = false;
-		const expectedDbPath = path.join(process.env.OMP_AGENT_DIR, "cache", "skill-registry", "index.sqlite");
-		const originalLoadIndex = SERVICE.skillIndexLoader.loadIndex;
-		SERVICE.skillIndexLoader.loadIndex = async () => {
-			loadIndexCalled = true;
-			return {
-				docCount: 0,
-				skills: [],
-				aliasToCanonical: new Map(),
-				dfByTerm: new Map(),
-				stats: {
-					totalFilesVisited: 0,
-					totalParsed: 0,
-					skippedMissingRoot: 0,
-					parseErrors: 0,
-					deduplicated: 0,
-					missingFromRequested: [],
-					malformedFiles: [],
-					duplicateCanonicalEntries: [],
-					duplicateAliasEntries: [],
-					nameFilterMode: "full",
-				},
-				generatedAt: Date.now(),
-				ttlMs: 0,
-				requestKey: "",
-				sourceSignature: VALID_SOURCE_SIGNATURE,
-				settings: {
-					roots: [],
-					scopeRoots: {},
-					scopePriority: [],
-					fileNames: [],
-					maxTopK: 100,
-					cacheTtlMs: 0,
-					includePreviewBodyChars: 100,
-					presetSkills: [],
-					databasePath: expectedDbPath,
-				},
-				requestedNames: [],
-				avgLength: 0,
-				indexBuildMs: 0,
-			};
-		};
+  test('blocks query-only actions on small/medium taskSize and skips loadIndex', async () => {
+    envSnapshot = { ...process.env }
+    root = fs.mkdtempSync(path.join(process.cwd(), '.tmp-skill-registry-main-'))
+    process.env.OMP_AGENT_DIR = path.join(root, 'agent-cache')
+    process.env.OMP_AGENT_HOME = ''
+    process.env.PI_CODING_AGENT_DIR = ''
+    let loadIndexCalled = false
+    const expectedDbPath = path.join(process.env.OMP_AGENT_DIR, 'cache', 'skill-registry', 'index.sqlite')
+    const originalLoadIndex = SERVICE.skillIndexLoader.loadIndex
+    SERVICE.skillIndexLoader.loadIndex = async () => {
+      loadIndexCalled = true
+      return {
+        docCount: 0,
+        skills: [],
+        aliasToCanonical: new Map(),
+        dfByTerm: new Map(),
+        stats: {
+          totalFilesVisited: 0,
+          totalParsed: 0,
+          skippedMissingRoot: 0,
+          parseErrors: 0,
+          deduplicated: 0,
+          missingFromRequested: [],
+          malformedFiles: [],
+          duplicateCanonicalEntries: [],
+          duplicateAliasEntries: [],
+          nameFilterMode: 'full',
+        },
+        generatedAt: Date.now(),
+        ttlMs: 0,
+        requestKey: '',
+        sourceSignature: VALID_SOURCE_SIGNATURE,
+        settings: {
+          roots: [],
+          scopeRoots: {},
+          scopePriority: [],
+          fileNames: [],
+          maxTopK: 100,
+          cacheTtlMs: 0,
+          includePreviewBodyChars: 100,
+          presetSkills: [],
+          databasePath: expectedDbPath,
+        },
+        requestedNames: [],
+        avgLength: 0,
+        indexBuildMs: 0,
+      }
+    }
 
-		try {
-			const { tools } = registerHarness();
-			const tool = tools[0];
-			if (!tool?.execute) {
-				throw new Error("expected registered tool execute handler");
-			}
+    try {
+      const { tools } = registerHarness()
+      const tool = tools[0]
+      if (!tool?.execute) {
+        throw new Error('expected registered tool execute handler')
+      }
 
-			const blockedActions = ["decide", "plan", "route", "current-turn-packet", "session-packet", "turn-packet"] as const;
-			for (const action of blockedActions) {
-				loadIndexCalled = false;
-				const result = await tool.execute(
-					`tool-call-${action}`,
-					{
-						action,
-						query: "security review",
-						taskSize: "medium",
-						roots: ["/non-existent-path"],
-						refresh: true,
-					},
-					undefined,
-					undefined,
-					undefined,
-				);
-				expect(loadIndexCalled).toBe(false);
-				expect(textFromResult(result)).toContain('query-only 확장은 taskSize:"large"에서만 허용됩니다');
-			}
-		} finally {
-			SERVICE.skillIndexLoader.loadIndex = originalLoadIndex;
-		}
-	});
+      const blockedActions = ['decide', 'plan', 'route', 'current-turn-packet', 'session-packet', 'turn-packet'] as const
+      for (const action of blockedActions) {
+        loadIndexCalled = false
+        const result = await tool.execute(
+          `tool-call-${action}`,
+          {
+            action,
+            query: 'security review',
+            taskSize: 'medium',
+            roots: ['/non-existent-path'],
+            refresh: true,
+          },
+          undefined,
+          undefined,
+          undefined,
+        )
+        expect(loadIndexCalled).toBe(false)
+        expect(textFromResult(result)).toContain('query-only 확장은 taskSize:"large"에서만 허용됩니다')
+      }
+    } finally {
+      SERVICE.skillIndexLoader.loadIndex = originalLoadIndex
+    }
+  })
 
-	test("returns compacted unknown tool_result replacements and leaves unrelated events undefined", () => {
-		envSnapshot = { ...process.env };
-		const { toolResultHandler } = registerHarness();
-		if (!toolResultHandler) {
-			throw new Error("expected registered tool_result handler");
-		}
+  test('returns compacted unknown tool_result replacements and leaves unrelated events undefined', () => {
+    envSnapshot = { ...process.env }
+    const { toolResultHandler } = registerHarness()
+    if (!toolResultHandler) {
+      throw new Error('expected registered tool_result handler')
+    }
 
-		const replacement = toolResultHandler({
-			toolName: "read",
-			isError: true,
-			input: { path: "skill://alpha" },
-			content: [{ type: "text", text: "Unknown skill: alpha\nAvailable: beta" }],
-		}) as SkillReadResultCompactorReplacement | null;
-		expect(replacement).toMatchObject({
-			isError: false,
-		});
-		expect(replacement?.content?.[0]?.text ?? "").not.toContain("Available:");
-		expect(toolResultHandler({ toolName: "read", isError: false, content: [] })).toBeUndefined();
-		expect(toolResultHandler({ toolName: "other", isError: true, content: [] })).toBeUndefined();
-	});
+    const replacement = toolResultHandler({
+      toolName: 'read',
+      isError: true,
+      input: { path: 'skill://alpha' },
+      content: [{ type: 'text', text: 'Unknown skill: alpha\nAvailable: beta' }],
+    }) as SkillReadResultCompactorReplacement | null
+    expect(replacement).toMatchObject({
+      isError: false,
+    })
+    expect(replacement?.content?.[0]?.text ?? '').not.toContain('Available:')
+    expect(toolResultHandler({ toolName: 'read', isError: false, content: [] })).toBeUndefined()
+    expect(toolResultHandler({ toolName: 'other', isError: true, content: [] })).toBeUndefined()
+  })
 
-	test("accepts scopes parameter in tool schema and executes discovery with scope filter", async () => {
-		envSnapshot = { ...process.env };
-		root = fs.mkdtempSync(path.join(process.cwd(), ".tmp-skill-registry-main-"));
-		process.env.OMP_AGENT_DIR = path.join(root, "agent-cache");
-		process.env.OMP_AGENT_HOME = "";
-		process.env.PI_CODING_AGENT_DIR = "";
+  test('accepts scopes parameter in tool schema and executes discovery with scope filter', async () => {
+    envSnapshot = { ...process.env }
+    root = fs.mkdtempSync(path.join(process.cwd(), '.tmp-skill-registry-main-'))
+    process.env.OMP_AGENT_DIR = path.join(root, 'agent-cache')
+    process.env.OMP_AGENT_HOME = ''
+    process.env.PI_CODING_AGENT_DIR = ''
 
-		const localRoot = path.join(root, "local");
-		const globalRoot = path.join(root, "global");
-		fs.mkdirSync(localRoot, { recursive: true });
-		fs.mkdirSync(globalRoot, { recursive: true });
+    const localRoot = path.join(root, 'local')
+    const globalRoot = path.join(root, 'global')
+    fs.mkdirSync(localRoot, { recursive: true })
+    fs.mkdirSync(globalRoot, { recursive: true })
 
-		writeSkill(localRoot, "local-skill", "Local body content.");
-		writeSkill(globalRoot, "global-skill", "Global body content.");
+    writeSkill(localRoot, 'local-skill', 'Local body content.')
+    writeSkill(globalRoot, 'global-skill', 'Global body content.')
 
-		const originalLoadSettings = SERVICE.settingsLoader.loadSettings;
-		const mockSettings = {
-			roots: [localRoot, globalRoot],
-			scopeRoots: {
-				"user-authored:local": [localRoot],
-				"user-authored:global": [globalRoot],
-			},
-			scopePriority: ["user-authored:local", "user-authored:global"],
-			fileNames: ["SKILL.md"],
-			presetSkills: [],
-			databasePath: path.join(root, "db-main-scopes.sqlite"),
-			cacheTtlMs: 60_000,
-			maxTopK: 50,
-			includePreviewBodyChars: 250,
-		};
-		SERVICE.settingsLoader.loadSettings = () => mockSettings;
+    const originalLoadSettings = SERVICE.settingsLoader.loadSettings
+    const mockSettings = {
+      roots: [localRoot, globalRoot],
+      scopeRoots: {
+        'user-authored:local': [localRoot],
+        'user-authored:global': [globalRoot],
+      },
+      scopePriority: ['user-authored:local', 'user-authored:global'],
+      fileNames: ['SKILL.md'],
+      presetSkills: [],
+      databasePath: path.join(root, 'db-main-scopes.sqlite'),
+      cacheTtlMs: 60_000,
+      maxTopK: 50,
+      includePreviewBodyChars: 250,
+    }
+    SERVICE.settingsLoader.loadSettings = () => mockSettings
 
-		try {
-			const { tools } = registerHarness();
-			const tool = tools[0];
-			if (!tool?.execute) {
-				throw new Error("expected registered tool execute handler");
-			}
+    try {
+      const { tools } = registerHarness()
+      const tool = tools[0]
+      if (!tool?.execute) {
+        throw new Error('expected registered tool execute handler')
+      }
 
-			// Case 1: execute with scopes: ["user-authored:local"] -> should only discover local-skill
-			const result = await tool.execute(
-				"tool-call-scopes-1",
-				{
-					action: "discover",
-					query: "body content",
-					scopes: ["user-authored:local"],
-					refresh: true,
-				},
-				undefined,
-				undefined,
-				undefined,
-			);
+      // Case 1: execute with scopes: ["user-authored:local"] -> should only discover local-skill
+      const result = await tool.execute(
+        'tool-call-scopes-1',
+        {
+          action: 'discover',
+          query: 'body content',
+          scopes: ['user-authored:local'],
+          refresh: true,
+        },
+        undefined,
+        undefined,
+        undefined,
+      )
 
-			const text = textFromResult(result);
-			expect(text).toContain("skill://local-skill");
-			expect(text).not.toContain("skill://global-skill");
+      const text = textFromResult(result)
+      expect(text).toContain('skill://local-skill')
+      expect(text).not.toContain('skill://global-skill')
 
-			// Check schema definition for scopes
-			expect(tool.parameters).toBeDefined();
-			const paramsSchema = tool.parameters as { properties?: { scopes?: unknown } };
-			expect(paramsSchema.properties?.scopes).toBeDefined();
-		} finally {
-			SERVICE.settingsLoader.loadSettings = originalLoadSettings;
-		}
-	});
-});
+      // Check schema definition for scopes
+      expect(tool.parameters).toBeDefined()
+      const paramsSchema = tool.parameters as { properties?: { scopes?: unknown } }
+      expect(paramsSchema.properties?.scopes).toBeDefined()
+    } finally {
+      SERVICE.settingsLoader.loadSettings = originalLoadSettings
+    }
+  })
+})

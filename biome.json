@@ -1,40 +1,102 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
-	"vcs": {
-		"enabled": false
-	},
-	"files": {
-		"ignoreUnknown": true,
-		"includes": ["**/*.ts"]
-	},
-	"formatter": {
-		"enabled": true,
-		"indentStyle": "tab"
-	},
-	"linter": {
-		"enabled": true,
-		"rules": {
-			"preset": "recommended",
-			"complexity": {
-				"noStaticOnlyClass": "off"
-			}
-		}
-	},
-	"javascript": {
-		"formatter": {
-			"quoteStyle": "double",
-			"semicolons": "always",
-			"indentWidth": 4,
-			"indentStyle": "tab",
-			"lineWidth": 140
-		}
-	},
-	"assist": {
-		"enabled": true,
-		"actions": {
-			"source": {
-				"organizeImports": "on"
-			}
-		}
-	}
+  "$schema": "https://biomejs.dev/schemas/2.5.4/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["src/**/*.ts", "src/**/*.tsx"]
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "includes": ["src/**/*.ts", "!src/**/*.spec.ts"],
+    "rules": {
+      "preset": "recommended",
+      "complexity": {
+        "noBannedTypes": "error",
+        "noEmptyTypeParameters": "error",
+        "noExtraBooleanCast": "error",
+        "noUselessTypeConstraint": "error",
+        "noExcessiveCognitiveComplexity": "warn",
+        "noExcessiveLinesPerFunction": {
+          "level": "warn",
+          "options": {
+            "maxLines": 30,
+            "skipBlankLines": true,
+            "skipIifes": true
+          }
+        },
+        "noUselessConstructor": "error",
+        "noUselessRename": "error",
+        "useMaxParams": {
+          "level": "warn",
+          "options": {
+            "max": 5
+          }
+        },
+        "noUselessCatch": "error",
+        "useOptionalChain": "warn",
+        "noForEach": "error",
+        "useArrayFind": "warn"
+      },
+      "correctness": {
+        "noUndeclaredDependencies": "error",
+        "noUnusedFunctionParameters": "error",
+        "noUnusedImports": "error",
+        "noUnusedLabels": "error",
+        "noUnusedVariables": "error",
+        "noUnusedPrivateClassMembers": "error",
+        "noUnreachable": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
+        "useExhaustiveSwitchCases": "warn"
+      },
+      "performance": {
+        "noBarrelFile": "warn",
+        "noReExportAll": "error"
+      },
+      "style": {
+        "noEnum": "error",
+        "noExportedImports": "error",
+        "noNegationElse": "error",
+        "noNonNullAssertion": "error",
+        "noParameterAssign": "error",
+        "noUselessElse": "warn",
+        "useCollapsedElseIf": "error",
+        "useCollapsedIf": "error",
+        "useImportType": "error",
+        "useDefaultParameterLast": "error",
+        "useConst": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 140,
+    "lineEnding": "lf",
+    "includes": ["**/*.ts", "**/*.tsx"]
+  },
+  "javascript": {
+    "formatter": {
+      "semicolons": "asNeeded",
+      "quoteStyle": "single"
+    }
+  }
 }

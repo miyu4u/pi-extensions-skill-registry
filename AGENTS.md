@@ -125,6 +125,8 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 
 ## COMMAND
 
+- `bun run lint` : 현재 Biome 규칙에 따라 source lint 위반을 자동 수정하고 잔여 위반을 검증
+
 - `bun run check` : typecheck와 Biome check
 - `bun run check:fix` : typecheck, lint, formatting
 - `bun run test:unit` : unit test
@@ -171,6 +173,8 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 ---
 
 ## APPENDED RULES
+
+- Biome lint 위반 수정과 검증에는 현재 설정을 적용하는 `bun run lint`를 사용해야 합니다.
 
 - Slash command 이름은 `/skill-registry:$command_name` namespace를 사용해야 하며 unnamespaced command를 등록해서는 안 됩니다.
 - `reindex(index)`, `discover`, `diagnostics` command 기능은 command 기반 공통 interface를 먼저 정의하고, 각 command의 독립 service를 구현·확장한 뒤 command-service wiring 순서로 구성해야 합니다.

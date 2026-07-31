@@ -1,301 +1,301 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, test } from "@jest/globals";
-import { SERVICE } from "../service-registry";
-import { DEFAULT_SETTINGS } from "../shared";
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, test } from '@jest/globals'
+import { SERVICE } from '../service-registry'
+import { DEFAULT_SETTINGS } from '../shared'
 
-type EnvSnapshot = NodeJS.ProcessEnv;
+type EnvSnapshot = NodeJS.ProcessEnv
 
 type SettingPayload = {
-	roots?: string[];
-	fileNames?: string[];
-	presetSkills?: string[];
-	cacheTtlMs?: number;
-	maxTopK?: number;
-	includePreviewBodyChars?: number;
-	databasePath?: string;
-	scopeRoots?: unknown;
-	scopePriority?: unknown;
-};
+  roots?: string[]
+  fileNames?: string[]
+  presetSkills?: string[]
+  cacheTtlMs?: number
+  maxTopK?: number
+  includePreviewBodyChars?: number
+  databasePath?: string
+  scopeRoots?: unknown
+  scopePriority?: unknown
+}
 
 /** settings loader service 동작 검증입니다. */
-describe("settings loader service", () => {
-	const loader = SERVICE.settingsLoader;
-	let root = "";
-	let previousCwd = process.cwd();
-	let envSnapshot: EnvSnapshot = {};
+describe('settings loader service', () => {
+  const loader = SERVICE.settingsLoader
+  let root = ''
+  let previousCwd = process.cwd()
+  let envSnapshot: EnvSnapshot = {}
 
-	afterEach(() => {
-		restoreEnvironment(envSnapshot);
-		if (root) {
-			fs.rmSync(root, { recursive: true, force: true });
-			root = "";
-		}
-		process.chdir(previousCwd);
-	});
+  afterEach(() => {
+    restoreEnvironment(envSnapshot)
+    if (root) {
+      fs.rmSync(root, { recursive: true, force: true })
+      root = ''
+    }
+    process.chdir(previousCwd)
+  })
 
-	function restoreEnvironment(snapshot: EnvSnapshot): void {
-		const keys = new Set([...Object.keys(process.env), ...Object.keys(snapshot)]);
-		for (const key of keys) {
-			const value = snapshot[key];
-			if (typeof value === "undefined") {
-				delete process.env[key];
-			} else {
-				process.env[key] = value;
-			}
-		}
-	}
+  function restoreEnvironment(snapshot: EnvSnapshot): void {
+    const keys = new Set([...Object.keys(process.env), ...Object.keys(snapshot)])
+    for (const key of keys) {
+      const value = snapshot[key]
+      if (typeof value === 'undefined') {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+  }
 
-	function setupProject(): void {
-		previousCwd = process.cwd();
-		root = fs.mkdtempSync(path.join(process.cwd(), ".tmp-skill-registry-settings-"));
-		envSnapshot = { ...process.env };
-		process.chdir(root);
-	}
+  function setupProject(): void {
+    previousCwd = process.cwd()
+    root = fs.mkdtempSync(path.join(process.cwd(), '.tmp-skill-registry-settings-'))
+    envSnapshot = { ...process.env }
+    process.chdir(root)
+  }
 
-	function writeProjectSetting(fileName: string, payload: SettingPayload): void {
-		const filePath = path.join(root, fileName);
-		fs.mkdirSync(path.dirname(filePath), { recursive: true });
-		fs.writeFileSync(
-			filePath,
-			JSON.stringify(
-				{
-					skillRegistry: payload,
-				},
-				null,
-				2,
-			),
-			"utf-8",
-		);
-	}
+  function writeProjectSetting(fileName: string, payload: SettingPayload): void {
+    const filePath = path.join(root, fileName)
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify(
+        {
+          skillRegistry: payload,
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    )
+  }
 
-	test("loads explicit databasePath in top-level settings", () => {
-		setupProject();
-		const absolutePath = path.join(root, "explicit", "custom.sqlite");
-		writeProjectSetting(".pi/settings.json", {
-			roots: ["./skills"],
-			fileNames: ["SKILL.md"],
-			presetSkills: ["alpha"],
-			cacheTtlMs: 1234,
-			maxTopK: 7,
-			includePreviewBodyChars: 321,
-			databasePath: absolutePath,
-		});
+  test('loads explicit databasePath in top-level settings', () => {
+    setupProject()
+    const absolutePath = path.join(root, 'explicit', 'custom.sqlite')
+    writeProjectSetting('.pi/settings.json', {
+      roots: ['./skills'],
+      fileNames: ['SKILL.md'],
+      presetSkills: ['alpha'],
+      cacheTtlMs: 1234,
+      maxTopK: 7,
+      includePreviewBodyChars: 321,
+      databasePath: absolutePath,
+    })
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.roots).toEqual(["./skills"]);
-		expect(settings.fileNames).toEqual(["SKILL.md"]);
-		expect(settings.presetSkills).toEqual(["alpha"]);
-		expect(settings.cacheTtlMs).toBe(1234);
-		expect(settings.maxTopK).toBe(7);
-		expect(settings.includePreviewBodyChars).toBe(321);
-		expect(settings.databasePath).toBe(absolutePath);
-	});
+    expect(settings.roots).toEqual(['./skills'])
+    expect(settings.fileNames).toEqual(['SKILL.md'])
+    expect(settings.presetSkills).toEqual(['alpha'])
+    expect(settings.cacheTtlMs).toBe(1234)
+    expect(settings.maxTopK).toBe(7)
+    expect(settings.includePreviewBodyChars).toBe(321)
+    expect(settings.databasePath).toBe(absolutePath)
+  })
 
-	test("prefers dedicated project settings over generic project block", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings.json", {
-			roots: ["./fallback"],
-			fileNames: ["fallback.md"],
-			presetSkills: ["fallback"],
-			databasePath: path.join(root, "fallback.sqlite"),
-		});
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			roots: ["./preferred"],
-			fileNames: ["SKILL.md"],
-			presetSkills: ["beta"],
-		});
+  test('prefers dedicated project settings over generic project block', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings.json', {
+      roots: ['./fallback'],
+      fileNames: ['fallback.md'],
+      presetSkills: ['fallback'],
+      databasePath: path.join(root, 'fallback.sqlite'),
+    })
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      roots: ['./preferred'],
+      fileNames: ['SKILL.md'],
+      presetSkills: ['beta'],
+    })
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.roots).toEqual(["./preferred"]);
-		expect(settings.fileNames).toEqual(["SKILL.md"]);
-		expect(settings.presetSkills).toEqual(["beta"]);
-	});
+    expect(settings.roots).toEqual(['./preferred'])
+    expect(settings.fileNames).toEqual(['SKILL.md'])
+    expect(settings.presetSkills).toEqual(['beta'])
+  })
 
-	test("returns default roots when no settings supply roots", () => {
-		setupProject();
-		const ompAgentDir = path.join(root, "agents", "omp-dir");
-		const ompAgentHome = path.join(root, "agents", "omp-home");
-		const piAgentDir = path.join(root, "agents", "pi-agent");
-		process.env.OMP_AGENT_DIR = ompAgentDir;
-		process.env.OMP_AGENT_HOME = ompAgentHome;
-		process.env.PI_CODING_AGENT_DIR = piAgentDir;
-		fs.mkdirSync(ompAgentDir, { recursive: true });
-		fs.mkdirSync(ompAgentHome, { recursive: true });
-		fs.mkdirSync(piAgentDir, { recursive: true });
+  test('returns default roots when no settings supply roots', () => {
+    setupProject()
+    const ompAgentDir = path.join(root, 'agents', 'omp-dir')
+    const ompAgentHome = path.join(root, 'agents', 'omp-home')
+    const piAgentDir = path.join(root, 'agents', 'pi-agent')
+    process.env.OMP_AGENT_DIR = ompAgentDir
+    process.env.OMP_AGENT_HOME = ompAgentHome
+    process.env.PI_CODING_AGENT_DIR = piAgentDir
+    fs.mkdirSync(ompAgentDir, { recursive: true })
+    fs.mkdirSync(ompAgentHome, { recursive: true })
+    fs.mkdirSync(piAgentDir, { recursive: true })
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.roots).toEqual(DEFAULT_SETTINGS.roots);
-		expect(settings.roots).toContain("~/.omp/agent/managed-skills");
-		expect(settings.roots).toContain("~/.omp/managed-skills");
-		expect(settings.roots.every((rootValue) => !rootValue.includes(".arcana-local"))).toBe(true);
-	});
+    expect(settings.roots).toEqual(DEFAULT_SETTINGS.roots)
+    expect(settings.roots).toContain('~/.omp/agent/managed-skills')
+    expect(settings.roots).toContain('~/.omp/managed-skills')
+    expect(settings.roots.every((rootValue) => !rootValue.includes('.arcana-local'))).toBe(true)
+  })
 
-	test("resolves relative configured databasePath against project root", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			roots: ["./skills"],
-			fileNames: ["SKILL.md"],
-			databasePath: "relative-cache/index.sqlite",
-		});
+  test('resolves relative configured databasePath against project root', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      roots: ['./skills'],
+      fileNames: ['SKILL.md'],
+      databasePath: 'relative-cache/index.sqlite',
+    })
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.databasePath).toBe(path.join(root, "relative-cache", "index.sqlite"));
-	});
+    expect(settings.databasePath).toBe(path.join(root, 'relative-cache', 'index.sqlite'))
+  })
 
-	test("expands databasePath home shorthand", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			roots: ["./skills"],
-			fileNames: ["SKILL.md"],
-			databasePath: "~/agent-cache/skill-registry.sqlite",
-		});
+  test('expands databasePath home shorthand', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      roots: ['./skills'],
+      fileNames: ['SKILL.md'],
+      databasePath: '~/agent-cache/skill-registry.sqlite',
+    })
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.databasePath).toBe(path.join(os.homedir(), "agent-cache/skill-registry.sqlite"));
-	});
+    expect(settings.databasePath).toBe(path.join(os.homedir(), 'agent-cache/skill-registry.sqlite'))
+  })
 
-	test("uses OMP_AGENT_DIR before OMP_AGENT_HOME and PI_CODING_AGENT_DIR for default databasePath", () => {
-		setupProject();
-		envSnapshot = { ...process.env };
-		const ompAgentDir = path.join(root, "omp-dir");
-		const ompAgentHome = path.join(root, "omp-home");
-		const piAgentDir = path.join(root, "pi-agent");
-		process.env.OMP_AGENT_DIR = ompAgentDir;
-		process.env.OMP_AGENT_HOME = ompAgentHome;
-		process.env.PI_CODING_AGENT_DIR = piAgentDir;
+  test('uses OMP_AGENT_DIR before OMP_AGENT_HOME and PI_CODING_AGENT_DIR for default databasePath', () => {
+    setupProject()
+    envSnapshot = { ...process.env }
+    const ompAgentDir = path.join(root, 'omp-dir')
+    const ompAgentHome = path.join(root, 'omp-home')
+    const piAgentDir = path.join(root, 'pi-agent')
+    process.env.OMP_AGENT_DIR = ompAgentDir
+    process.env.OMP_AGENT_HOME = ompAgentHome
+    process.env.PI_CODING_AGENT_DIR = piAgentDir
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.databasePath).toBe(path.join(ompAgentDir, "cache", "skill-registry", "index.sqlite"));
-		restoreEnvironment(envSnapshot);
-	});
+    expect(settings.databasePath).toBe(path.join(ompAgentDir, 'cache', 'skill-registry', 'index.sqlite'))
+    restoreEnvironment(envSnapshot)
+  })
 
-	test("falls back to OMP_AGENT_HOME when OMP_AGENT_DIR is unset", () => {
-		setupProject();
-		process.env.OMP_AGENT_DIR = "";
-		process.env.OMP_AGENT_HOME = path.join(root, "omp-home");
-		process.env.PI_CODING_AGENT_DIR = "";
+  test('falls back to OMP_AGENT_HOME when OMP_AGENT_DIR is unset', () => {
+    setupProject()
+    process.env.OMP_AGENT_DIR = ''
+    process.env.OMP_AGENT_HOME = path.join(root, 'omp-home')
+    process.env.PI_CODING_AGENT_DIR = ''
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.databasePath).toBe(path.join(root, "omp-home", "cache", "skill-registry", "index.sqlite"));
-	});
+    expect(settings.databasePath).toBe(path.join(root, 'omp-home', 'cache', 'skill-registry', 'index.sqlite'))
+  })
 
-	test("falls back to PI_CODING_AGENT_DIR when OMP_AGENT_DIR and OMP_AGENT_HOME are unset", () => {
-		setupProject();
-		process.env.OMP_AGENT_DIR = "";
-		process.env.OMP_AGENT_HOME = "";
-		process.env.PI_CODING_AGENT_DIR = path.join(root, "pi-agent");
+  test('falls back to PI_CODING_AGENT_DIR when OMP_AGENT_DIR and OMP_AGENT_HOME are unset', () => {
+    setupProject()
+    process.env.OMP_AGENT_DIR = ''
+    process.env.OMP_AGENT_HOME = ''
+    process.env.PI_CODING_AGENT_DIR = path.join(root, 'pi-agent')
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.databasePath).toBe(path.join(root, "pi-agent", "cache", "skill-registry", "index.sqlite"));
-	});
+    expect(settings.databasePath).toBe(path.join(root, 'pi-agent', 'cache', 'skill-registry', 'index.sqlite'))
+  })
 
-	test("falls back to ~/.omp/agent when no agent env vars are set", () => {
-		setupProject();
-		process.env.OMP_AGENT_DIR = "";
-		process.env.OMP_AGENT_HOME = "";
-		process.env.PI_CODING_AGENT_DIR = "";
+  test('falls back to ~/.omp/agent when no agent env vars are set', () => {
+    setupProject()
+    process.env.OMP_AGENT_DIR = ''
+    process.env.OMP_AGENT_HOME = ''
+    process.env.PI_CODING_AGENT_DIR = ''
 
-		const settings = loader.loadSettings();
+    const settings = loader.loadSettings()
 
-		expect(settings.databasePath).toBe(path.join(os.homedir(), ".omp", "agent", "cache", "skill-registry", "index.sqlite"));
-	});
+    expect(settings.databasePath).toBe(path.join(os.homedir(), '.omp', 'agent', 'cache', 'skill-registry', 'index.sqlite'))
+  })
 
-	test("uses default scope roots and scope priority if omitted", () => {
-		setupProject();
-		const settings = loader.loadSettings();
-		expect(settings.scopeRoots).toEqual({
-			"user-authored:local": [process.cwd()],
-			"user-authored:global": [os.homedir()],
-			"managed-skills": expect.arrayContaining([
-				path.join(os.homedir(), ".omp", "agent", "managed-skills"),
-				path.join(os.homedir(), ".omp", "managed-skills"),
-			]),
-		});
-		expect(settings.scopePriority).toEqual(["user-authored:local", "user-authored:global", "managed-skills"]);
-	});
+  test('uses default scope roots and scope priority if omitted', () => {
+    setupProject()
+    const settings = loader.loadSettings()
+    expect(settings.scopeRoots).toEqual({
+      'user-authored:local': [process.cwd()],
+      'user-authored:global': [os.homedir()],
+      'managed-skills': expect.arrayContaining([
+        path.join(os.homedir(), '.omp', 'agent', 'managed-skills'),
+        path.join(os.homedir(), '.omp', 'managed-skills'),
+      ]),
+    })
+    expect(settings.scopePriority).toEqual(['user-authored:local', 'user-authored:global', 'managed-skills'])
+  })
 
-	/**
-	 * 기본 설정이 런타임 managed-skills 경로와
-	 * 레거시 managed-skills 경로를 모두 포함하는지 검증합니다.
-	 */
-	test("includes both runtime and legacy managed-skills in default scopeRoots and roots", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings.json", {});
-		const settings = loader.loadSettings();
+  /**
+   * 기본 설정이 런타임 managed-skills 경로와
+   * 레거시 managed-skills 경로를 모두 포함하는지 검증합니다.
+   */
+  test('includes both runtime and legacy managed-skills in default scopeRoots and roots', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings.json', {})
+    const settings = loader.loadSettings()
 
-		const expectedRuntimeRoot = path.join(os.homedir(), ".omp", "agent", "managed-skills");
-		const expectedLegacyRoot = path.join(os.homedir(), ".omp", "managed-skills");
+    const expectedRuntimeRoot = path.join(os.homedir(), '.omp', 'agent', 'managed-skills')
+    const expectedLegacyRoot = path.join(os.homedir(), '.omp', 'managed-skills')
 
-		expect(settings.scopeRoots["managed-skills"]).toEqual(expect.arrayContaining([expectedRuntimeRoot, expectedLegacyRoot]));
-		expect(settings.roots).toEqual(expect.arrayContaining([expectedRuntimeRoot, expectedLegacyRoot]));
-	});
+    expect(settings.scopeRoots['managed-skills']).toEqual(expect.arrayContaining([expectedRuntimeRoot, expectedLegacyRoot]))
+    expect(settings.roots).toEqual(expect.arrayContaining([expectedRuntimeRoot, expectedLegacyRoot]))
+  })
 
-	test("loads custom future scopes and merges them with default scope roots", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			scopeRoots: {
-				"future-scope": ["./future-skills", "~/global-future"],
-			},
-		});
+  test('loads custom future scopes and merges them with default scope roots', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      scopeRoots: {
+        'future-scope': ['./future-skills', '~/global-future'],
+      },
+    })
 
-		const settings = loader.loadSettings();
-		expect(settings.scopeRoots["future-scope"]).toEqual(["./future-skills", path.join(os.homedir(), "global-future")]);
-		expect(settings.scopeRoots["user-authored:local"]).toEqual([process.cwd()]);
-	});
+    const settings = loader.loadSettings()
+    expect(settings.scopeRoots['future-scope']).toEqual(['./future-skills', path.join(os.homedir(), 'global-future')])
+    expect(settings.scopeRoots['user-authored:local']).toEqual([process.cwd()])
+  })
 
-	test("flattens custom scopes to append to legacy roots if roots is omitted", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			scopeRoots: {
-				"future-scope": ["./future-skills"],
-			},
-		});
+  test('flattens custom scopes to append to legacy roots if roots is omitted', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      scopeRoots: {
+        'future-scope': ['./future-skills'],
+      },
+    })
 
-		const settings = loader.loadSettings();
-		expect(settings.roots).toContain("./future-skills");
-		for (const legacyRoot of DEFAULT_SETTINGS.roots) {
-			const expected = legacyRoot.startsWith("~") ? path.join(os.homedir(), legacyRoot.slice(1)) : legacyRoot;
-			expect(settings.roots).toContain(expected);
-		}
-	});
+    const settings = loader.loadSettings()
+    expect(settings.roots).toContain('./future-skills')
+    for (const legacyRoot of DEFAULT_SETTINGS.roots) {
+      const expected = legacyRoot.startsWith('~') ? path.join(os.homedir(), legacyRoot.slice(1)) : legacyRoot
+      expect(settings.roots).toContain(expected)
+    }
+  })
 
-	test("falls back to default scopePriority when containing non-string items", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			scopePriority: ["custom-scope", "", "custom-scope", 123],
-		});
+  test('falls back to default scopePriority when containing non-string items', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      scopePriority: ['custom-scope', '', 'custom-scope', 123],
+    })
 
-		const settings = loader.loadSettings();
-		expect(settings.scopePriority).toEqual(["user-authored:local", "user-authored:global", "managed-skills"]);
-	});
+    const settings = loader.loadSettings()
+    expect(settings.scopePriority).toEqual(['user-authored:local', 'user-authored:global', 'managed-skills'])
+  })
 
-	test("filters out empty strings and dedupes valid scope names in scopePriority", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			scopePriority: ["custom-scope", "  ", "custom-scope", "other-scope"],
-		});
+  test('filters out empty strings and dedupes valid scope names in scopePriority', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      scopePriority: ['custom-scope', '  ', 'custom-scope', 'other-scope'],
+    })
 
-		const settings = loader.loadSettings();
-		expect(settings.scopePriority).toEqual(["custom-scope", "other-scope"]);
-	});
+    const settings = loader.loadSettings()
+    expect(settings.scopePriority).toEqual(['custom-scope', 'other-scope'])
+  })
 
-	test("accepts valid custom scopePriority list", () => {
-		setupProject();
-		writeProjectSetting(".pi/settings/skill-registry/skill-registry.json", {
-			scopePriority: ["managed-skills", "user-authored:local"],
-		});
+  test('accepts valid custom scopePriority list', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      scopePriority: ['managed-skills', 'user-authored:local'],
+    })
 
-		const settings = loader.loadSettings();
-		expect(settings.scopePriority).toEqual(["managed-skills", "user-authored:local"]);
-	});
-});
+    const settings = loader.loadSettings()
+    expect(settings.scopePriority).toEqual(['managed-skills', 'user-authored:local'])
+  })
+})
