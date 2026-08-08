@@ -6,11 +6,11 @@ import {
   SKILL_RESOLVE_SUGGESTION_DEFAULT_LIMIT,
   SKILL_RESOLVE_SUGGESTION_HARD_CAP,
   type SkillGraphMode,
+  type SkillRegistrySettings,
   type SkillRelationMode,
+  type SkillTaskSize,
   type ToolContext,
   type ToolInput,
-  type SkillTaskSize,
-  type SkillRegistrySettings,
 } from '../shared'
 import { normalizeSkillName } from './skill-name-normalizer'
 import type { SkillScopeResolverInterface } from './skill-scope-resolver.interface'

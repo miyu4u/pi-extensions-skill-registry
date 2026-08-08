@@ -19,6 +19,7 @@ export {
   STOP_WORDS,
 } from './skill-registry.constant'
 export type {
+  BeforeAgentStartEventLike,
   ComposedSkillEntry,
   DuplicateAliasEntry,
   DuplicateCanonicalEntry,
@@ -108,8 +109,7 @@ export type {
   SkillValidationSeverity,
   SkillVerificationPacketResult,
   SkillWriteScriptPacketResult,
+  SystemPromptOverrideResult,
   ToolContext,
   ToolInput,
-  BeforeAgentStartEventLike,
-  SystemPromptOverrideResult,
 } from './skill-registry.type'

@@ -119,6 +119,13 @@ export interface SkillPackRequest {
   limit?: number
   minScore?: number
 }
+/** Body budget 적용 뒤 packet 조립에 필요한 선택 결과를 보존합니다. */
+interface PackSelection {
+  effectiveChars: number
+  omittedReadPaths: string[]
+  finalizedEntries: SkillPack['entries']
+  usedChars: number
+}
 
 /** read/session/turn 계열 packet projection의 concrete owner입니다. */
 export class SkillReadPacketBuilder {
@@ -434,9 +441,7 @@ export class SkillReadPacketBuilder {
     }
   }
 
-  private normalizeResumePacketRequest(
-    request: SkillResumePacketRequest,
-  ): {
+  private normalizeResumePacketRequest(request: SkillResumePacketRequest): {
     index: IndexArtifacts
     query: string | undefined
     names: string[]
@@ -458,8 +463,6 @@ export class SkillReadPacketBuilder {
     } = request
     return { index, query, names, relationMode, budgetChars, budgetTokens, limit, minScore }
   }
-
-
 
   private buildResumePacketSkillsResult(
     turnPacket: SkillTurnPacketResult,
@@ -498,8 +501,6 @@ export class SkillReadPacketBuilder {
     return this.buildResumePacketSkillsResult(turnPacket, recoveryPacket, resumeTurnOrder, turns)
   }
 
-
-
   currentTurnPacketSkills(request: SkillCurrentTurnPacketRequest): SkillCurrentTurnPacketResult {
     const resumePacket = this.resumePacketSkills(request)
     const turn = resumePacket.turns[0] ?? null
@@ -537,9 +538,26 @@ export class SkillReadPacketBuilder {
       minScore,
     })
     const validation = this.indexDiagnostics.validateIndex(index)
-    const { effectiveChars, omittedReadPaths, finalizedEntries, usedChars } = this.preparePackSelection({
-      projection, index, includeBody, budgetChars, budgetTokens,
+    const selection = this.preparePackSelection({
+      projection,
+      index,
+      includeBody,
+      budgetChars,
+      budgetTokens,
     })
+    return this.buildPackSkillsResult({ projection, validation, selection, budgetChars, budgetTokens })
+  }
+
+  /** 검색 projection과 budget selection 결과를 외부 packet 계약으로 결합합니다. */
+  private buildPackSkillsResult(request: {
+    projection: SkillRelationProjection
+    validation: SkillPack['validate']
+    selection: PackSelection
+    budgetChars: number
+    budgetTokens: number
+  }): SkillPack {
+    const { projection, validation, selection, budgetChars, budgetTokens } = request
+    const { effectiveChars, omittedReadPaths, finalizedEntries, usedChars } = selection
     return {
       ok: projection.missing.every((entry) => entry.relation !== 'required') && projection.cycles.length === 0 && validation.ok,
       relationMode: projection.relationMode,
@@ -570,16 +588,11 @@ export class SkillReadPacketBuilder {
 
   /** Character와 token budget 중 실제 body selection에 적용할 더 엄격한 상한을 계산합니다. */
   private resolvePackEffectiveChars(budgetChars: number, budgetTokens: number): number {
-    return budgetChars > 0 && budgetTokens > 0
-      ? Math.min(budgetChars, budgetTokens * 4)
-      : Math.max(budgetChars, budgetTokens * 4)
+    return budgetChars > 0 && budgetTokens > 0 ? Math.min(budgetChars, budgetTokens * 4) : Math.max(budgetChars, budgetTokens * 4)
   }
 
   /** Budget에 선택되지 않은 body를 제거하면서 omission metadata를 보존합니다. */
-  private finalizePackEntries(
-    entries: SkillPack["entries"],
-    selectedBodyPaths: ReadonlySet<string>,
-  ): SkillPack["entries"] {
+  private finalizePackEntries(entries: SkillPack['entries'], selectedBodyPaths: ReadonlySet<string>): SkillPack['entries'] {
     return entries.map((entry) =>
       selectedBodyPaths.has(entry.readPath) ? entry : { ...entry, body: undefined, omittedByBudget: Boolean(entry.body) },
     )
@@ -592,12 +605,7 @@ export class SkillReadPacketBuilder {
     includeBody: boolean
     budgetChars: number
     budgetTokens: number
-  }): {
-    effectiveChars: number
-    omittedReadPaths: string[]
-    finalizedEntries: SkillPack["entries"]
-    usedChars: number
-  } {
+  }): PackSelection {
     const { projection, index, includeBody, budgetChars, budgetTokens } = request
     const effectiveChars = this.resolvePackEffectiveChars(budgetChars, budgetTokens)
     const omittedReadPaths: string[] = []
@@ -658,10 +666,7 @@ export class SkillReadPacketBuilder {
     ]
   }
 
-  private buildTurn(
-    p: SkillHandoffResult['phases'][number],
-    es: SkillHandoffResult['entries'],
-  ): SkillTurnPacketResult['turns'][number] {
+  private buildTurn(p: SkillHandoffResult['phases'][number], es: SkillHandoffResult['entries']): SkillTurnPacketResult['turns'][number] {
     const pe = this.findTurnPhaseEntries(es, p.order)
     const sourcePaths = this.getTurnSourcePaths(pe)
     const nextCommands = this.getTurnNextCommands(sourcePaths)
@@ -683,16 +688,11 @@ export class SkillReadPacketBuilder {
     }
   }
 
-  private findTurnPhaseEntries(
-    es: SkillHandoffResult['entries'],
-    order: number,
-  ): SkillHandoffResult['entries'] {
+  private findTurnPhaseEntries(es: SkillHandoffResult['entries'], order: number): SkillHandoffResult['entries'] {
     return es.filter((e) => e.phaseOrder === order)
   }
 
-  private getTurnSourcePaths(
-    phaseEntries: SkillHandoffResult['entries'],
-  ): string[] {
+  private getTurnSourcePaths(phaseEntries: SkillHandoffResult['entries']): string[] {
     return phaseEntries.map((e) => e.path)
   }
 
@@ -704,9 +704,7 @@ export class SkillReadPacketBuilder {
     return phaseEntries.some((e) => e.omittedByBudget)
   }
 
-  private buildTurnObjective(
-    p: SkillHandoffResult['phases'][number],
-  ): string {
+  private buildTurnObjective(p: SkillHandoffResult['phases'][number]): string {
     return p.kind === 'start'
       ? `Start with winner ${p.names[0] ?? '-'}`
       : p.kind === 'read-layer'
@@ -716,11 +714,7 @@ export class SkillReadPacketBuilder {
           : 'Inspect remaining fallback steps'
   }
 
-  private buildTurnChecklist(
-    p: SkillHandoffResult['phases'][number],
-    nextCommands: string[],
-    blockedByBudget: boolean,
-  ): string[] {
+  private buildTurnChecklist(p: SkillHandoffResult['phases'][number], nextCommands: string[], blockedByBudget: boolean): string[] {
     return [
       p.readPaths.length ? `Read packet entries: ${p.readPaths.join(', ')}` : undefined,
       nextCommands.length ? `Open source files: ${nextCommands.join(' -> ')}` : undefined,
@@ -728,10 +722,7 @@ export class SkillReadPacketBuilder {
     ].filter((i): i is string => Boolean(i))
   }
 
-  private buildTurnExitCriteria(
-    p: SkillHandoffResult['phases'][number],
-    blockedByBudget: boolean,
-  ): string[] {
+  private buildTurnExitCriteria(p: SkillHandoffResult['phases'][number], blockedByBudget: boolean): string[] {
     return [
       p.names.length ? `Reviewed skills: ${p.names.join(', ')}` : undefined,
       blockedByBudget ? `Budget omissions cleared for turn ${p.order}` : `Turn ${p.order} is ready without extra budget recovery`,
