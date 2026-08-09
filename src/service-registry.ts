@@ -18,16 +18,15 @@ import {
 import { PromptGuidanceService } from './prompt/prompt-guidance.service'
 import { SkillReadResultCompactorService } from './results'
 import { SettingsLoaderService } from './settings/settings-loader.service'
-import { EnglishFuzzyMatcherService } from './tokenization/english-fuzzy-matcher.service'
-import { KoreanMorphologyAnalyzerService } from './tokenization/korean-morphology-analyzer.service'
-import { SearchTokenizerService } from './tokenization/search-tokenizer.service'
+import { englishFuzzyMatcher, koreanMorphologyAnalyzer, SearchTokenizerService } from './tokenization'
 
 const settingsLoader = new SettingsLoaderService()
-const englishFuzzyMatcher = new EnglishFuzzyMatcherService()
-const koreanMorphologyAnalyzer = new KoreanMorphologyAnalyzerService()
-const searchTokenizer = new SearchTokenizerService(englishFuzzyMatcher, koreanMorphologyAnalyzer)
 const promptGuidance = new PromptGuidanceService(settingsLoader)
 const skillReadResultCompactor = new SkillReadResultCompactorService()
+/**
+ * 검색용 영어·한국어 토큰화 서비스를 조합해 애플리케이션 전역에서 공유합니다.
+ */
+export const searchTokenizer = new SearchTokenizerService()
 export const createSkillSearchDatabaseService = (): SkillSearchDatabaseService => new SkillSearchDatabaseService()
 
 const skillSearchDatabase = createSkillSearchDatabaseService()

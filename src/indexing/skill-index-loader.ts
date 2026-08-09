@@ -1,5 +1,5 @@
 import type { IndexArtifacts, IndexedStats, RawSkill, ToolContext } from '../shared'
-import type { SearchTokenizerInterface } from '../tokenization'
+import type { TokenizerContract } from '../tokenization'
 import type { ActiveIndexStore } from './active-index-store'
 import type { SkillDocumentParser } from './skill-document-parser'
 import type { SkillFileScanner } from './skill-file-scanner'
@@ -82,7 +82,7 @@ interface SkillIndexLoaderDependencies {
   /** SQLite snapshot과 FTS lifecycle owner입니다. */
   searchDatabase: SkillSearchDatabaseInterface
   /** 검색 문서 token derivation contract입니다. */
-  searchTokenizer: SearchTokenizerInterface
+  searchTokenizer: TokenizerContract
   /** Filesystem skill 후보 scanner입니다. */
   fileScanner: SkillFileScanner
   /** Markdown skill document parser입니다. */
@@ -113,7 +113,7 @@ interface ScanSourcesRequest {
 /** Skill index 생성, cache, snapshot lifecycle의 concrete owner입니다. */
 export class SkillIndexLoader {
   private readonly searchDatabase: SkillSearchDatabaseInterface
-  private readonly searchTokenizer: SearchTokenizerInterface
+  private readonly searchTokenizer: TokenizerContract
   private readonly fileScanner: SkillFileScanner
   private readonly documentParser: SkillDocumentParser
   private readonly activeIndexStore: ActiveIndexStore

@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals'
-import { SERVICE } from '../service-registry'
+import { SERVICE } from '../../service-registry'
 
 /** 영어 fuzz matcher direct API 검증입니다. */
 describe('english fuzzy matcher service', () => {

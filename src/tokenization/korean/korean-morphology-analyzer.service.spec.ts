@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals'
-import { SERVICE } from '../service-registry'
+import { SERVICE } from '../../service-registry'
 
 /** 한국어 형태소 분석 direct API 검증입니다. */
 describe('korean morphology analyzer service', () => {

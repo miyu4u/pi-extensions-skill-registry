@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals'
 import type { IndexedStats, RawSkill, ToolContext } from '../shared'
-import type { SearchTokenizerInterface } from '../tokenization'
+import type { TokenizerContract } from '../tokenization'
 import { ActiveIndexStore } from './active-index-store'
 import type { SkillDocumentParser } from './skill-document-parser'
 import type { SkillFileScanner } from './skill-file-scanner'
@@ -178,7 +178,7 @@ function makeLoader(
     tokenizeDocumentText: () => ({ baseTokens: [], derivedTokens: [], allTokens: [] }),
     tokenizeQueryText: () => ({ baseTokens: [], derivedTokens: [], allTokens: [] }),
     buildQueryVariants: () => [],
-  } as SearchTokenizerInterface
+  } as TokenizerContract
   const scanner = {
     scan: (root: string, fileNames: string[], requestedSet: Set<string>) => {
       scanCount.value += 1

@@ -19,7 +19,7 @@ import {
   SKILL_RESOLVE_SUGGESTION_HARD_CAP,
   SKILL_RESOLVE_SUGGESTION_MIN_CONFIDENCE,
 } from '../shared'
-import type { SearchTokenizerInterface } from '../tokenization'
+import type { TokenizerContract } from '../tokenization'
 import type { ActiveIndexStore } from './active-index-store'
 import type { SkillSearchDatabaseInterface, SkillSearchDatabaseMatch } from './skill-search-database.interface'
 
@@ -60,7 +60,7 @@ const FALLBACK_QUERY_STOP_WORDS: Record<string, true> = {
 export class SkillSearchEngine {
   constructor(
     private readonly searchDatabase: SkillSearchDatabaseInterface,
-    private readonly searchTokenizer: SearchTokenizerInterface,
+    private readonly searchTokenizer: TokenizerContract,
     private readonly activeIndexStore: ActiveIndexStore,
   ) {}
 
