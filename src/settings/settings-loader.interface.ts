@@ -1,5 +1,5 @@
 import type { SkillRegistrySettings } from '../shared'
-
+import type { PromptGuidanceSettings } from './prompt-guidance-settings.interface'
 /** skill-registry 설정 로더 계약입니다. */
 export interface SettingsLoaderInterface {
   /**
@@ -13,4 +13,9 @@ export interface SettingsLoaderInterface {
     scopeRoots: Record<string, string[]>
     scopePriority: string[]
   }
+
+  /**
+   * prompt hook에 전달할 prompt 전용 설정을 동일한 settings precedence로 정규화합니다.
+   */
+  loadPromptSettings(): PromptGuidanceSettings
 }

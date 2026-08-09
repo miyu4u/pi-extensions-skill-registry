@@ -26,7 +26,7 @@ const settingsLoader = new SettingsLoaderService()
 const englishFuzzyMatcher = new EnglishFuzzyMatcherService()
 const koreanMorphologyAnalyzer = new KoreanMorphologyAnalyzerService()
 const searchTokenizer = new SearchTokenizerService(englishFuzzyMatcher, koreanMorphologyAnalyzer)
-const promptGuidance = new PromptGuidanceService()
+const promptGuidance = new PromptGuidanceService(settingsLoader)
 const skillReadResultCompactor = new SkillReadResultCompactorService()
 export const createSkillSearchDatabaseService = (): SkillSearchDatabaseService => new SkillSearchDatabaseService()
 

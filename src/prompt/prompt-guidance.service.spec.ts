@@ -1,6 +1,8 @@
 import { describe, expect, test } from '@jest/globals'
 import { SERVICE } from '../service-registry'
+import type { PromptGuidanceSettings } from '../settings'
 import { SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK } from '../shared'
+import { PromptGuidanceService } from './prompt-guidance.service'
 
 /** prompt guidance service 동작 검증입니다. */
 describe('prompt guidance service', () => {
@@ -20,6 +22,20 @@ describe('prompt guidance service', () => {
     messages?: MessageLike[]
     extraState?: unknown
     [key: string]: unknown
+  }
+
+  /**
+   * settings 주입만 바꿔 prompt renderer의 독립 동작을 검증합니다.
+   */
+  function createPromptService(settings: Partial<PromptGuidanceSettings> = {}): PromptGuidanceService {
+    const normalizedSettings: PromptGuidanceSettings = {
+      skillsPromptEnabled: true,
+      promptSkillNames: [],
+      ...settings,
+    }
+    return new PromptGuidanceService({
+      loadPromptSettings: () => normalizedSettings,
+    })
   }
 
   /** guidance가 unknown URI 직접 읽기와 full catalog 확장을 금지하는지 검증합니다. */
@@ -233,5 +249,116 @@ describe('prompt guidance service', () => {
 
     expect(result).toBeUndefined()
     expect(JSON.stringify(event)).toBe(snapshot)
+  })
+  test('passes before_agent_start through without changing identity when prompt replacement is disabled', () => {
+    const service = createPromptService({ skillsPromptEnabled: false })
+    const event: ProviderPayload = {
+      systemPrompt: 'Intro\n<skills>\n- legacy\n</skills>\nTail',
+    }
+    const snapshot = JSON.stringify(event)
+
+    expect(service.handleBeforeAgentStart(event)).toBeUndefined()
+    expect(JSON.stringify(event)).toBe(snapshot)
+  })
+
+  test('passes provider request with instructions through without changing identity when prompt replacement is disabled', () => {
+    const service = createPromptService({ skillsPromptEnabled: false })
+    const providerPayload: ProviderPayload = {
+      instructions: 'Intro\n<skills>\n- legacy\n</skills>\nTail',
+    }
+    const payloadSnapshot = JSON.stringify(providerPayload)
+    const originalInstructions = providerPayload.instructions
+
+    expect(service.handleBeforeProviderRequest(providerPayload)).toBeUndefined()
+    expect(providerPayload.instructions).toBe(originalInstructions)
+    expect(JSON.stringify(providerPayload)).toBe(payloadSnapshot)
+  })
+
+  test('passes provider request with system/developer and text-part payloads through when disabled', () => {
+    const service = createPromptService({ skillsPromptEnabled: false })
+    const providerPayload: ProviderPayload = {
+      instructions: ['Intro', '<skills>', '- legacy', '</skills>', 'Tail'].join('\n'),
+      messages: [
+        { role: 'system', content: [{ type: 'text', text: ['System', '<skills>', '- legacy', '</skills>'].join('\n') }] },
+        {
+          role: 'developer',
+          content: [
+            { type: 'text', text: ['Developer', '<skills>', '- legacy', '</skills>'].join('\n') } as TextPart,
+            { type: 'text', text: 'Developer tail' } as TextPart,
+          ] as const,
+        },
+      ],
+      extraState: { scenario: 'disabled pass-through' },
+    }
+    const payloadSnapshot = JSON.stringify(providerPayload)
+    const originalMessages = providerPayload.messages
+    const originalSystemMessage = providerPayload.messages?.[0]
+    const originalDeveloperMessage = providerPayload.messages?.[1]
+    const originalSystemContent = providerPayload.messages?.[0]?.content
+    const originalDeveloperContent = providerPayload.messages?.[1]?.content
+    const originalSystemPart = Array.isArray(originalSystemContent) ? originalSystemContent[0] : undefined
+    const originalDeveloperFirstPart = Array.isArray(originalDeveloperContent) ? originalDeveloperContent[0] : undefined
+    const originalDeveloperSecondPart = Array.isArray(originalDeveloperContent) ? originalDeveloperContent[1] : undefined
+
+    expect(service.handleBeforeProviderRequest(providerPayload)).toBeUndefined()
+    expect(providerPayload.messages).toBe(originalMessages)
+    expect(providerPayload.messages?.[0]).toBe(originalSystemMessage)
+    expect(providerPayload.messages?.[1]).toBe(originalDeveloperMessage)
+    expect(providerPayload.messages?.[0]?.content).toBe(originalSystemContent)
+    expect(providerPayload.messages?.[1]?.content).toBe(originalDeveloperContent)
+    const currentSystemContent = providerPayload.messages?.[0]?.content
+    const currentDeveloperContent = providerPayload.messages?.[1]?.content
+    expect(Array.isArray(currentSystemContent)).toBe(true)
+    expect(Array.isArray(currentDeveloperContent)).toBe(true)
+    if (Array.isArray(currentSystemContent) && Array.isArray(currentDeveloperContent)) {
+      expect(currentSystemContent[0]).toBe(originalSystemPart)
+      expect(currentDeveloperContent[0]).toBe(originalDeveloperFirstPart)
+      expect(currentDeveloperContent[1]).toBe(originalDeveloperSecondPart)
+      expect(currentDeveloperContent[0]).toHaveProperty('text')
+      expect((currentDeveloperContent[0] as TextPart).text).toBe((originalDeveloperFirstPart as TextPart)?.text)
+      expect((currentSystemContent[0] as TextPart).text).toBe((originalSystemPart as TextPart)?.text)
+    }
+    expect(JSON.stringify(providerPayload)).toBe(payloadSnapshot)
+    expect(providerPayload.messages?.[1]?.content).toBeDefined()
+  })
+
+  test('uses trimmed custom body, marker compatibility, and ordered prompt names', () => {
+    const service = createPromptService({
+      skillsPrompt: '  <skills>\nUse the registry for focused work.\n</skills>  ',
+      promptSkillNames: ['planning', 'typescript-code-style'],
+    })
+    const event: ProviderPayload = {
+      systemPrompt: 'Intro\n<skills>\n- legacy catalog\n</skills>\nTail',
+    }
+
+    const result = service.handleBeforeAgentStart(event)
+    const rewritten = result?.systemPrompt ?? ''
+
+    expect(rewritten).toContain('Use the registry for focused work.')
+    expect(rewritten).toContain('- Configured prompt skills: planning, typescript-code-style')
+    expect(rewritten).not.toContain(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK)
+    expect(rewritten).not.toContain('- legacy catalog')
+
+    const providerResult = service.handleBeforeProviderRequest({
+      instructions: 'Intro\n<skills>\n- legacy provider catalog\n</skills>\nTail',
+    }) as ProviderPayload
+    expect(providerResult.instructions).toContain('Use the registry for focused work.')
+    expect(providerResult.instructions).toContain('- Configured prompt skills: planning, typescript-code-style')
+  })
+
+  test('falls back to built-in body for blank custom prompt and does not add an empty names line', () => {
+    const service = createPromptService({
+      skillsPrompt: ' \n ',
+      promptSkillNames: [],
+    })
+    const event: ProviderPayload = {
+      systemPrompt: 'Intro\n<skills>\n- legacy catalog\n</skills>\nTail',
+    }
+
+    const result = service.handleBeforeAgentStart(event)
+    const rewritten = result?.systemPrompt ?? ''
+
+    expect(rewritten).toContain(SKILL_REGISTRY_PROMPT_GUIDANCE_BLOCK)
+    expect(rewritten).not.toContain('- Configured prompt skills:')
   })
 })

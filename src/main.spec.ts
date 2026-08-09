@@ -54,12 +54,14 @@ function writeSkill(root: string, name: string, body: string): void {
 function registerHarness(): {
   tools: Array<RegisteredTool>
   beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined
+  beforeProviderRequest: ((event: { payload: unknown }) => unknown) | undefined
   toolResultHandler: ToolResultHandler | undefined
   commands: Record<string, RegisteredCommand>
 } {
   const tools: Array<RegisteredTool> = []
   const commands: Record<string, RegisteredCommand> = {}
   let beforeAgentStart: ((event: { systemPrompt?: string | readonly string[] }) => unknown) | undefined
+  let beforeProviderRequest: ((event: { payload: unknown }) => unknown) | undefined
   let toolResultHandler: ToolResultHandler | undefined
 
   const pi = {
@@ -72,6 +74,8 @@ function registerHarness(): {
     on(eventName: string, handler: unknown) {
       if (eventName === 'before_agent_start') {
         beforeAgentStart = handler as (event: { systemPrompt?: string | readonly string[] }) => unknown
+      } else if (eventName === 'before_provider_request') {
+        beforeProviderRequest = handler as (event: { payload: unknown }) => unknown
       } else if (eventName === 'tool_result') {
         toolResultHandler = (event) =>
           (handler as (event: SkillReadResultCompactorToolResult) => SkillReadResultCompactorReplacement | null)(event) ?? undefined
@@ -81,7 +85,7 @@ function registerHarness(): {
 
   register(pi)
 
-  return { tools, beforeAgentStart, toolResultHandler, commands }
+  return { tools, beforeAgentStart, beforeProviderRequest, toolResultHandler, commands }
 }
 
 function closeSkillIndex(): void {
@@ -113,10 +117,9 @@ describe('main entrypoint integration', () => {
     }
   })
 
-  test('registers the skill_registry tool and before_agent_start hook directly', async () => {
+  test('registers the skill_registry tool and both prompt hooks directly', async () => {
     envSnapshot = { ...process.env }
-    const { tools, beforeAgentStart, toolResultHandler, commands } = registerHarness()
-
+    const { tools, beforeAgentStart, beforeProviderRequest, toolResultHandler, commands } = registerHarness()
     expect(tools).toHaveLength(1)
     expect(tools[0]?.name).toBe('skill_registry')
     expect(tools[0]?.label).toBe(SkillRegistryToolContract.label)
@@ -127,6 +130,8 @@ describe('main entrypoint integration', () => {
     expect(serializedParameters).not.toContain('"trim":true')
     expect(beforeAgentStart).toBeDefined()
     expect(typeof beforeAgentStart).toBe('function')
+    expect(beforeProviderRequest).toBeDefined()
+    expect(typeof beforeProviderRequest).toBe('function')
     expect(toolResultHandler).toBeDefined()
     expect(typeof toolResultHandler).toBe('function')
 
@@ -166,6 +171,30 @@ describe('main entrypoint integration', () => {
       expect(notifyCalls).toEqual([['Reindex complete', 'info']])
     } finally {
       SERVICE.reindexCommand.execute = originalExecute
+    }
+  })
+
+  test('keeps both registered prompt hook payloads unchanged when settings disable replacement', async () => {
+    envSnapshot = { ...process.env }
+    const originalLoadPromptSettings = SERVICE.settingsLoader.loadPromptSettings
+    SERVICE.settingsLoader.loadPromptSettings = () => ({
+      skillsPromptEnabled: false,
+      promptSkillNames: [],
+    })
+
+    try {
+      const { beforeAgentStart, beforeProviderRequest } = registerHarness()
+      const agentEvent = { systemPrompt: 'Intro\n<skills>\n- legacy\n</skills>\nTail' }
+      const providerEvent = { payload: { instructions: agentEvent.systemPrompt } }
+      const agentSnapshot = JSON.stringify(agentEvent)
+      const providerSnapshot = JSON.stringify(providerEvent)
+
+      expect(await beforeAgentStart?.(agentEvent)).toBeUndefined()
+      expect(beforeProviderRequest?.(providerEvent)).toBeUndefined()
+      expect(JSON.stringify(agentEvent)).toBe(agentSnapshot)
+      expect(JSON.stringify(providerEvent)).toBe(providerSnapshot)
+    } finally {
+      SERVICE.settingsLoader.loadPromptSettings = originalLoadPromptSettings
     }
   })
 

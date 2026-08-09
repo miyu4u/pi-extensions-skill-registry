@@ -17,6 +17,9 @@ type SettingPayload = {
   databasePath?: string
   scopeRoots?: unknown
   scopePriority?: unknown
+  skillsPromptEnabled?: unknown
+  skillsPrompt?: unknown
+  promptSkillNames?: unknown
 }
 
 /** settings loader service 동작 검증입니다. */
@@ -297,5 +300,67 @@ describe('settings loader service', () => {
 
     const settings = loader.loadSettings()
     expect(settings.scopePriority).toEqual(['managed-skills', 'user-authored:local'])
+  })
+  test('returns prompt defaults when no prompt settings file exists', () => {
+    setupProject()
+
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: true,
+      promptSkillNames: [],
+    })
+  })
+
+  test.each([
+    ['null', null],
+    ['number', 42],
+    ['object', { v: true }],
+    ['array', ['false']],
+  ])('falls back to enabled=true when skillsPromptEnabled is invalid %s', (_, invalidValue) => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      skillsPromptEnabled: invalidValue,
+    })
+
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: true,
+      promptSkillNames: [],
+    })
+  })
+
+  test('normalizes prompt settings defaults, invalid values, and names deterministically', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      skillsPromptEnabled: 'false',
+      skillsPrompt: '  ',
+      promptSkillNames: [' planning ', '', 'typescript-code-style', 'planning', 42],
+    })
+
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: true,
+      promptSkillNames: ['planning', 'typescript-code-style'],
+    })
+  })
+
+  test('accepts false toggle and non-empty custom prompt while preserving candidate precedence', () => {
+    setupProject()
+    writeProjectSetting('.pi/settings.json', {
+      skillsPromptEnabled: true,
+      skillsPrompt: 'generic prompt',
+      promptSkillNames: ['generic'],
+    })
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      skillsPromptEnabled: false,
+      skillsPrompt: '  custom prompt  ',
+      promptSkillNames: [' custom ', 'custom'],
+      presetSkills: ['index-only'],
+    })
+
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: false,
+      skillsPrompt: 'custom prompt',
+      promptSkillNames: ['custom'],
+    })
+
+    expect(loader.loadSettings().presetSkills).toEqual(['index-only'])
   })
 })

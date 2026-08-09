@@ -344,6 +344,20 @@ Cache hit에서도 effective root의 candidate file 목록과 `size`/`mtimeMs`�
 
 extension은 `before_agent_start`와 `before_provider_request` lifecycle hook을 연결합니다. runtime이 제공하는 `<skills>...</skills>` catalog가 있으면 첫 번째 block을 compact skill-registry guidance로 대체해 prompt에 전체 catalog를 반복해서 넣지 않도록 합니다.
 
+Prompt replacement은 기본 활성화이며 `skillRegistry` settings에서 다음 prompt 전용 key를 조정할 수 있습니다.
+
+```json
+{
+  "skillRegistry": {
+    "skillsPromptEnabled": true,
+    "skillsPrompt": "Use the registry when specialized knowledge is needed.",
+    "promptSkillNames": ["planning", "typescript-code-style"]
+  }
+}
+```
+
+`skillsPromptEnabled`는 boolean `false`일 때만 두 hook을 pass-through로 만들며, missing 또는 invalid 값은 `true`로 fallback합니다. `skillsPrompt`는 body text를 받으며 blank/invalid 값은 built-in guidance로 fallback합니다. 기존 설정이 한 겹의 `<skills>...</skills>` block 전체를 포함해도 compatibility normalization을 적용합니다. `promptSkillNames`는 prompt에만 사용하는 ordered list로 trim, empty 제거, dedupe 후 `Configured prompt skills` line에 표시됩니다. 기존 `presetSkills`는 indexing filter로만 동작합니다. settings file precedence는 indexing settings와 동일합니다.
+
 `tool_result` hook은 `skill://` read 오류 중 exact unknown case만 위 compact recovery로 치환합니다. `discover/search -> resolve -> read`를 통해 복구하되, catalog 또는 suggestion 문구를 복사하지 않고 <=4096-byte 응답만 생성합니다. valid skill read, non-skill read, 그 밖의 unrelated error는 모두 pass-through합니다. host wrapper에서는 transport success(`isError:false`)로 보여도 text는 semantic unknown을 유지하므로, operator는 이 replacement를 "성공으로 전달되지만 의미는 unknown"인 타협으로 이해해야 합니다. 이 동작은 plugin package reload 이후에 반영됩니다.
 
 ## 개발
@@ -359,6 +373,7 @@ bun run build
 bun run test:unit
 bun run test:sqlite
 bun run test:e2e
+bun run test:runtime
 bun run test
 bun run verify:artifact
 bun run test:verify
@@ -373,6 +388,7 @@ bun run verify:pr
 | Gate | 명령 | Corpus | Load boundary | 실행 환경 |
 | --- | --- | --- | --- | --- |
 | Source contract | `bun run test:unit` / `bun run test:sqlite` | inline·temp fixture | `src` | PR |
+| Runtime prompt contract | `bun run test:runtime` | temp settings fixture | registered lifecycle hooks | PR |
 | Artifact | `bun run build` 후 `bun run verify:artifact` | temp planning fixture | built `dist/main.js` | PR |
 | Fresh process | `bun run test:verify` | temp planning fixture | child Bun + built dist | PR |
 | Installed runtime | `bun run verify:installed` | `~/.omp/agent/managed-skills` | installed plugin artifact | release/operator |
@@ -388,6 +404,7 @@ PR 기본 순서는 `check → test:unit → test:sqlite → build → verify:ar
 - `src/indexing/`: 문서 수집, 파싱, index, 검색, 관계, packet
 - `src/tokenization/`: 공용 query/document tokenization
 - `src/settings/`: 설정 파일 탐색과 정규화
+- `src/settings/prompt-guidance-settings.interface.ts`: prompt hook settings contract
 - `src/results/`: tool result 직렬화
 - `src/prompt/`: prompt guidance hook
 - `scripts/verify/`: dist harness, freshness checker, fresh-process runner, artifact/installed gate

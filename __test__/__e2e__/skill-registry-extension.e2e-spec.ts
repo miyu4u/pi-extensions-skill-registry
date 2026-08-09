@@ -27,6 +27,7 @@ type RegisteredTool = {
 };
 
 type BeforeAgentStartHandler = (event: { systemPrompt?: string | readonly string[] }) => Promise<{ systemPrompt: string } | undefined>;
+type BeforeProviderRequestHandler = (event: { payload: unknown }) => unknown | undefined;
 
 const temporaryDirectories: string[] = [];
 let envSnapshot: EnvSnapshot = {};
@@ -103,9 +104,11 @@ async function withWorkspaceCwd(workspace: string, run: () => Promise<void>): Pr
 function registerHarness(): {
 	tools: Map<string, RegisteredTool>;
 	events: Map<string, BeforeAgentStartHandler>;
+	beforeProviderRequest?: BeforeProviderRequestHandler;
 } {
 	const tools = new Map<string, RegisteredTool>();
 	const events = new Map<string, BeforeAgentStartHandler>();
+	let beforeProviderRequest: BeforeProviderRequestHandler | undefined;
 
 	const pi = {
 		registerTool(tool: unknown) {
@@ -114,14 +117,19 @@ function registerHarness(): {
 				tools.set(registeredTool.name, registeredTool);
 			}
 		},
+		registerCommand() {},
 		on(eventName: string, handler: unknown) {
+			if (eventName === "before_provider_request") {
+				beforeProviderRequest = handler as BeforeProviderRequestHandler;
+				return;
+			}
 			events.set(eventName, handler as BeforeAgentStartHandler);
 		},
 	} as unknown as ExtensionAPI;
 
 	register(pi);
 
-	return { tools, events };
+	return { tools, events, beforeProviderRequest };
 }
 
 describe("skill-registry extension entrypoint e2e", () => {
@@ -139,9 +147,10 @@ describe("skill-registry extension entrypoint e2e", () => {
 			includePreviewBodyChars: 120,
 		});
 
-		const { tools, events } = registerHarness();
+		const { tools, events, beforeProviderRequest } = registerHarness();
 		expect([...tools.keys()]).toEqual(["skill_registry"]);
 		expect(events.has("before_agent_start")).toBe(true);
+		expect(beforeProviderRequest).toBeDefined();
 
 		const tool = tools.get("skill_registry");
 		if (!tool?.execute) {
@@ -202,6 +211,66 @@ describe("skill-registry extension entrypoint e2e", () => {
 		expect(rewrittenPrompt).toContain(secondSkillsBlock);
 		expect(rewrittenPrompt.match(/<skills>/g)?.length).toBe(2);
 	});
+	it("applies custom prompt settings and names through both registered runtime hooks", async () => {
+		envSnapshot = { ...process.env };
+		const workspace = await mkdtemp(join(tmpdir(), "skill-registry-prompt-runtime-"));
+		temporaryDirectories.push(workspace);
+		await writeSkillRegistrySettings(workspace, {
+			skillsPrompt: "Use the configured runtime guidance.",
+			promptSkillNames: [" planning ", "typescript-code-style", "planning"],
+		});
+
+		await withWorkspaceCwd(workspace, async () => {
+			const { events, beforeProviderRequest } = registerHarness();
+			const beforeAgentStart = events.get("before_agent_start");
+			if (!beforeAgentStart || !beforeProviderRequest) {
+				throw new Error("expected both prompt hook handlers");
+			}
+
+			const agentEvent = {
+				systemPrompt: "Intro\n<skills>\n- old catalog\n</skills>\nTail\n<skills>\n- preserve\n</skills>",
+			};
+			const agentResult = await beforeAgentStart(agentEvent);
+			const rewrittenPrompt = agentResult?.systemPrompt ?? "";
+			expect(rewrittenPrompt).toContain("Use the configured runtime guidance.");
+			expect(rewrittenPrompt).toContain("- Configured prompt skills: planning, typescript-code-style");
+			expect(rewrittenPrompt).toContain("<skills>\n- preserve\n</skills>");
+
+			const providerResult = beforeProviderRequest({
+				payload: { instructions: "Provider intro\n<skills>\n- old provider catalog\n</skills>\nProvider tail" },
+			}) as { instructions?: string } | undefined;
+			expect(providerResult?.instructions).toContain("Use the configured runtime guidance.");
+			expect(providerResult?.instructions).toContain("- Configured prompt skills: planning, typescript-code-style");
+		});
+	});
+
+	it("passes both registered runtime prompt hooks through when disabled", async () => {
+		envSnapshot = { ...process.env };
+		const workspace = await mkdtemp(join(tmpdir(), "skill-registry-prompt-disabled-"));
+		temporaryDirectories.push(workspace);
+		await writeSkillRegistrySettings(workspace, {
+			skillsPromptEnabled: false,
+		});
+
+		await withWorkspaceCwd(workspace, async () => {
+			const { events, beforeProviderRequest } = registerHarness();
+			const beforeAgentStart = events.get("before_agent_start");
+			if (!beforeAgentStart || !beforeProviderRequest) {
+				throw new Error("expected both prompt hook handlers");
+			}
+
+			const agentEvent = { systemPrompt: "Intro\n<skills>\n- old catalog\n</skills>\nTail" };
+			const providerEvent = { payload: { instructions: agentEvent.systemPrompt } };
+			const agentSnapshot = JSON.stringify(agentEvent);
+			const providerSnapshot = JSON.stringify(providerEvent);
+
+			expect(await beforeAgentStart(agentEvent)).toBeUndefined();
+			expect(beforeProviderRequest(providerEvent)).toBeUndefined();
+			expect(JSON.stringify(agentEvent)).toBe(agentSnapshot);
+			expect(JSON.stringify(providerEvent)).toBe(providerSnapshot);
+		});
+	});
+
 });
 
 function restoreEnvironment(snapshot: EnvSnapshot): void {

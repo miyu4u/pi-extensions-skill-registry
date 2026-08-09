@@ -47,7 +47,9 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
     - `index.ts`: indexing concern의 module boundary barrel입니다.
   - `tokenization/`: English/Korean token derivation과 공용 query tokenization을 담당하며 `index.ts`로 concern을 노출합니다.
   - `prompt/`: `before_agent_start`와 `before_provider_request` prompt guidance hook을 담당합니다.
+    - `prompt-guidance.service.ts`: normalized prompt settings를 적용해 첫 `<skills>` block을 교체합니다.
   - `settings/`: settings lookup과 normalization을 담당합니다.
+    - `prompt-guidance-settings.interface.ts`: prompt hook 설정 contract를 정의합니다.
   - `results/`: result serialization helper를 제공합니다.
   - `shared/`: cross-cutting constant와 type만 보관하며 `index.ts`로 concern을 노출합니다.
 - `__test__/`: e2e test와 e2e Jest configuration을 보관합니다.
@@ -132,6 +134,7 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 - `bun run test:unit` : unit test
 - `bun run test:sqlite` : SQLite FTS5 database test
 - `bun run test:e2e` : e2e test
+- `bun run test:runtime` : registered prompt hook의 settings-aware runtime contract test
 - `bun run test` : unit, SQLite, e2e test 전체 실행
 - `bun run build` : extension bundle build
 - `bun run verify:artifact` : built `dist/main.js` registration과 fixture planning corpus 검증 (build 선행 필요)
@@ -145,6 +148,7 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 - `bun run test:unit`으로 indexing, tokenization, prompt, settings, result serialization contract를 검증합니다.
 - `bun run test:sqlite`으로 SQLite schema, snapshot persistence, FTS5 query와 connection lifecycle을 검증합니다.
 - `bun run test:e2e`로 host runtime에서 tool과 prompt hook registration을 검증합니다.
+- `bun run test:runtime`로 registered `before_agent_start`/`before_provider_request` hook의 prompt settings output을 검증합니다.
 - `bun run test`로 위 unit, SQLite, e2e test를 함께 검증합니다.
 - `bun run build`로 `src/main.ts` bundle과 host-owned `@earendil-works/*` runtime boundary를 검증합니다.
 - `bun run verify:artifact`로 built `dist/main.js`를 fake ExtensionAPI에 register하고 planning discover/index/resolve structured details를 검증합니다. 이 명령은 dist를 암묵 build하지 않습니다.

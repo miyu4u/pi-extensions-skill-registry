@@ -10,6 +10,7 @@ import {
   SKILL_REGISTRY_SETTINGS_FILE,
   SKILL_REGISTRY_SETTINGS_FILE_PATHS,
 } from '../shared'
+import type { PromptGuidanceSettings } from './prompt-guidance-settings.interface'
 import type { SettingsLoaderInterface } from './settings-loader.interface'
 
 type ScopeRoots = Record<string, string[]>
@@ -44,7 +45,32 @@ export class SettingsLoaderService implements SettingsLoaderInterface {
   }
 
   /**
-   * 지정된 파일에서 설정을 로드하고 유효성을 검증합니다. 실패 시 null을 반환합니다.
+   * prompt hook에 사용할 설정을 기존 settings candidate precedence로 정규화합니다.
+   */
+  loadPromptSettings(): PromptGuidanceSettings {
+    const candidateFiles = this.collectSettingFileCandidates(process.cwd())
+
+    for (const file of candidateFiles) {
+      if (!fs.existsSync(file)) {
+        continue
+      }
+
+      const value = this.readSettingsPayload(file)
+      if (value === null) {
+        continue
+      }
+
+      return this.normalizePromptSettings(value)
+    }
+
+    return {
+      skillsPromptEnabled: true,
+      promptSkillNames: [],
+    }
+  }
+
+  /**
+   * 지정된 파일에서 indexing settings를 로드하고 유효성을 검증합니다. 실패 시 null을 반환합니다.
    */
   private tryLoadSettingsFromFile(
     file: string,
@@ -52,32 +78,95 @@ export class SettingsLoaderService implements SettingsLoaderInterface {
     defaultDatabasePath: string,
     scopeRoots: ScopeRoots,
   ): (Required<SkillRegistrySettings> & { scopeRoots: ScopeRoots; scopePriority: string[] }) | null {
-    try {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf-8'))
-      const value = raw?.[SETTING_GROUP_KEY] ?? raw
-      const configuredScopeRoots = this.normalizeScopeRoots(value?.scopeRoots, DEFAULT_SCOPE_ROOTS)
-      const customScopeRoots = this.toScopeRootsRecord(value?.scopeRoots)
-      const configuredScopePriority = this.normalizeScopePriority(value?.scopePriority, DEFAULT_SCOPE_PRIORITY)
-      const effectiveScopeRoots = this.mergeScopeRoots(scopeRoots, configuredScopeRoots, configuredScopePriority)
-      const normalizedRoots = this.normalizeStringArrayWithExpansion(value?.roots, [
-        ...DEFAULT_SETTINGS.roots,
-        ...this.flattenScopeRoots(customScopeRoots, configuredScopePriority),
-      ])
+    const value = this.readSettingsPayload(file)
+    if (value === null) {
+      return null
+    }
 
-      return {
-        roots: normalizedRoots,
-        scopeRoots: effectiveScopeRoots,
-        scopePriority: configuredScopePriority,
-        fileNames: this.validateStringArray(value?.fileNames, DEFAULT_SETTINGS.fileNames),
-        presetSkills: this.validateStringArray(value?.presetSkills, DEFAULT_SETTINGS.presetSkills),
-        databasePath: this.validateDatabasePath(value?.databasePath, defaultDatabasePath, projectRoot),
-        cacheTtlMs: this.validatePositiveNumber(value?.cacheTtlMs, DEFAULT_SETTINGS.cacheTtlMs),
-        maxTopK: this.validatePositiveNumber(value?.maxTopK, DEFAULT_SETTINGS.maxTopK),
-        includePreviewBodyChars: this.validatePositiveNumber(value?.includePreviewBodyChars, DEFAULT_SETTINGS.includePreviewBodyChars),
+    const configuredScopeRoots = this.normalizeScopeRoots(value.scopeRoots, DEFAULT_SCOPE_ROOTS)
+    const customScopeRoots = this.toScopeRootsRecord(value.scopeRoots)
+    const configuredScopePriority = this.normalizeScopePriority(value.scopePriority, DEFAULT_SCOPE_PRIORITY)
+    const effectiveScopeRoots = this.mergeScopeRoots(scopeRoots, configuredScopeRoots, configuredScopePriority)
+    const normalizedRoots = this.normalizeStringArrayWithExpansion(value.roots, [
+      ...DEFAULT_SETTINGS.roots,
+      ...this.flattenScopeRoots(customScopeRoots, configuredScopePriority),
+    ])
+
+    return {
+      roots: normalizedRoots,
+      scopeRoots: effectiveScopeRoots,
+      scopePriority: configuredScopePriority,
+      fileNames: this.validateStringArray(value.fileNames, DEFAULT_SETTINGS.fileNames),
+      presetSkills: this.validateStringArray(value.presetSkills, DEFAULT_SETTINGS.presetSkills),
+      databasePath: this.validateDatabasePath(value.databasePath, defaultDatabasePath, projectRoot),
+      cacheTtlMs: this.validatePositiveNumber(value.cacheTtlMs, DEFAULT_SETTINGS.cacheTtlMs),
+      maxTopK: this.validatePositiveNumber(value.maxTopK, DEFAULT_SETTINGS.maxTopK),
+      includePreviewBodyChars: this.validatePositiveNumber(value.includePreviewBodyChars, DEFAULT_SETTINGS.includePreviewBodyChars),
+    }
+  }
+
+  /**
+   * settings file의 group wrapper를 제거하고 object payload만 반환합니다.
+   * JSON parse 실패와 유효한 빈 settings object를 구분해 candidate precedence를 보존합니다.
+   */
+  private readSettingsPayload(file: string): Record<string, unknown> | null {
+    try {
+      const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf-8'))
+      if (!this.isRecord(raw)) {
+        return {}
       }
+
+      const grouped = raw[SETTING_GROUP_KEY]
+      return grouped === undefined || grouped === null ? raw : this.isRecord(grouped) ? grouped : {}
     } catch {
       return null
     }
+  }
+
+  /**
+   * prompt settings의 boolean, custom body, names를 독립적으로 정규화합니다.
+   */
+  private normalizePromptSettings(value: Record<string, unknown>): PromptGuidanceSettings {
+    const customPrompt = typeof value.skillsPrompt === 'string' ? value.skillsPrompt.trim() : ''
+
+    return {
+      skillsPromptEnabled: value.skillsPromptEnabled !== false,
+      ...(customPrompt.length > 0 ? { skillsPrompt: customPrompt } : {}),
+      promptSkillNames: this.normalizePromptSkillNames(value.promptSkillNames),
+    }
+  }
+
+  /**
+   * prompt 전용 skill names를 입력 순서대로 trim/dedupe합니다.
+   */
+  private normalizePromptSkillNames(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    const seen = new Set<string>()
+    const names: string[] = []
+    for (const entry of value) {
+      if (typeof entry !== 'string') {
+        continue
+      }
+
+      const name = entry.trim()
+      if (name.length === 0 || seen.has(name)) {
+        continue
+      }
+
+      seen.add(name)
+      names.push(name)
+    }
+    return names
+  }
+
+  /**
+   * unknown value가 settings object인지 확인합니다.
+   */
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
   }
 
   /**

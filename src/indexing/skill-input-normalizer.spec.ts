@@ -28,6 +28,13 @@ class FakeSettingsLoader implements SettingsLoaderInterface {
   loadSettings() {
     return { ...this.settings }
   }
+
+  loadPromptSettings() {
+    return {
+      skillsPromptEnabled: true,
+      promptSkillNames: [],
+    }
+  }
 }
 
 class FakeScopeResolver implements SkillScopeResolverInterface {
