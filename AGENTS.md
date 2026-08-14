@@ -46,6 +46,12 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
     - `results/`: `tool_result` compaction과 unknown skill read recovery의 service ownership을 소유합니다.
     - `index.ts`: indexing concern의 module boundary barrel입니다.
   - `tokenization/`: English/Korean token derivation과 공용 query tokenization을 담당하며 `index.ts`로 concern을 노출합니다.
+    - `interface.ts`: `TokenizerContract`, `AnalyzerContract`, `MatcherContract`와 tokenization concern의 공용 계약을 정의합니다.
+    - `english/english-fuzzy-matcher.service.ts`: lowercase ASCII query와 index vocabulary를 비교해 exact/prefix 이후 사용할 영어 fuzzy 후보를 계산하고 `englishFuzzyMatcher` singleton을 제공합니다.
+    - `english/damerau-levenshtein-distance-calculator.ts`: 삽입, 삭제, 치환, 인접 전치를 포함한 Damerau-Levenshtein 거리를 계산하는 순수 계산 class입니다.
+    - `korean/korean-morphology-analyzer.service.ts`: 조사·어미 제거와 복합어 분해로 한국어 파생 token을 계산하고 `koreanMorphologyAnalyzer` singleton을 제공합니다.
+    - `search-tokenizer.service.ts`: 문서·query token 정규화와 한국어 파생 token 계산, exact → prefix → English fuzzy query variant 우선순위를 구현하는 `TokenizerContract` class입니다.
+    - `index.ts`: tokenization class, contract, English/Korean analyzer·matcher singleton을 외부에 노출하는 concern boundary barrel입니다. `searchTokenizer` singleton은 composition root인 `service-registry.ts`에서 생성합니다.
   - `prompt/`: `before_agent_start`와 `before_provider_request` prompt guidance hook을 담당합니다.
     - `prompt-guidance.service.ts`: normalized prompt settings를 적용해 첫 `<skills>` block을 교체합니다.
   - `settings/`: settings lookup과 normalization을 담당합니다.
@@ -88,6 +94,8 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 - 작업한 부분 중 const, type, property, function, method에는 multiline jsdoc 형식의 한글 주석을 작성해야합니다.
 - comment는 method 또는 const name 의 반복된 서술이여서는 안되며, 구체적인 작동 방식 및 "어떤 역할을 하는지"를 충분히 설명 할 수 있어야합니다.
 - property는 각 property에 inline multiline jsdoc으로 작성합니다.
+- method/function 주석은 내부 로직의 핵심 흐름과 판단 이유를 설명할 수 있어야 하며, 단순히 이름이나 반환값을 반복해서는 안 됩니다.
+- args가 있으면 `@param`, return이 있으면 `@returns`를 사용해야 하며, 각 인자와 반환값을 한국어로 설명해야 합니다.
 
 ## CODE STYLE
 
