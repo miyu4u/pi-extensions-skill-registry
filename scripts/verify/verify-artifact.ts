@@ -90,11 +90,12 @@ async function main(): Promise<void> {
 		throw new Error(`verify:artifact requires built dist first: missing ${DIST_BUNDLE}. Run bun run build.`);
 	}
 
+	const originalCwd = process.cwd();
 	const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "skill-registry-verify-artifact-"));
 	const corpusRoot = path.join(workspace, "corpus");
 	const agentDir = path.join(workspace, "agent");
 	const databasePath = path.join(agentDir, "cache", "skill-registry", "index.sqlite");
-	const settingsPath = path.join(agentDir, "settings", "skill-registry", "skill-registry.json");
+	const settingsPath = path.join(workspace, ".pi", "skill-registry.json");
 	fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 	fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
 	writePlanningFixtureCorpus(corpusRoot);
@@ -104,6 +105,7 @@ async function main(): Promise<void> {
 	process.env.PI_CODING_AGENT_DIR = "";
 
 	try {
+		process.chdir(workspace);
 		const harness = await loadDistHarness(DIST_BUNDLE);
 		for (const commandName of EXPECTED_COMMAND_NAMES) {
 			if (!harness.commandNames.includes(commandName)) {
@@ -151,6 +153,7 @@ async function main(): Promise<void> {
 		}
 		throw error;
 	} finally {
+		process.chdir(originalCwd);
 		fs.rmSync(workspace, { recursive: true, force: true });
 	}
 }

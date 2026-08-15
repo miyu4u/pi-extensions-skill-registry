@@ -54,7 +54,7 @@ function textFromResult(result: SkillRegistryToolResult): string {
  * @param settings skillRegistry 설정값
  */
 async function writeSkillRegistrySettings(workspace: string, settings: Record<string, unknown>): Promise<void> {
-	const settingsDirectory = join(workspace, ".pi", "settings", "skill-registry");
+	const settingsDirectory = join(workspace, ".pi");
 	await mkdir(settingsDirectory, { recursive: true });
 	await writeFile(join(settingsDirectory, "skill-registry.json"), JSON.stringify({ skillRegistry: settings }, null, 2), "utf8");
 }

@@ -15,7 +15,8 @@ async function main(): Promise<void> {
 	process.env.OMP_AGENT_HOME = "";
 	process.env.PI_CODING_AGENT_DIR = "";
 
-	const settingsDirectory = `${request.agentDir}/settings/skill-registry`;
+	const workspace = request.workspaceRoot ?? process.cwd();
+	const settingsDirectory = `${workspace}/.pi`;
 	fs.mkdirSync(settingsDirectory, { recursive: true });
 	fs.writeFileSync(
 		`${settingsDirectory}/skill-registry.json`,

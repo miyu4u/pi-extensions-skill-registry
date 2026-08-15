@@ -10,6 +10,7 @@ export type FreshProcessRequest = {
 	bundlePath: string;
 	roots: string[];
 	agentDir: string;
+	workspaceRoot?: string;
 	databasePath: string;
 	requireExactKnownResolve?: boolean;
 };
@@ -42,6 +43,7 @@ export async function runFreshProcessContract(input: {
 		bundlePath: path.resolve(input.bundlePath),
 		roots: input.roots.map((root) => path.resolve(root)),
 		agentDir,
+		workspaceRoot,
 		databasePath,
 		requireExactKnownResolve: input.requireExactKnownResolve,
 	};
@@ -99,6 +101,7 @@ export async function assertStaleFailsAndRebuiltSucceeds(input: {
 async function spawnFreshChild(request: FreshProcessRequest): Promise<FreshProcessResponse> {
 	return await new Promise<FreshProcessResponse>((resolve, reject) => {
 		const child = spawn("bun", [CHILD_SCRIPT], {
+			cwd: request.workspaceRoot,
 			stdio: ["pipe", "pipe", "pipe"],
 			env: {
 				...process.env,
