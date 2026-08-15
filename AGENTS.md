@@ -187,7 +187,6 @@ Pi/OMP runtime에서 여러 `SKILL.md` 문서를 검색 가능한 corpus로 제�
 ## APPENDED RULES
 
 - Biome lint 위반 수정과 검증에는 현재 설정을 적용하는 `bun run lint`를 사용해야 합니다.
-
 - Slash command 이름은 `/skill-registry:$command_name` namespace를 사용해야 하며 unnamespaced command를 등록해서는 안 됩니다.
 - `reindex(index)`, `discover`, `diagnostics` command 기능은 command 기반 공통 interface를 먼저 정의하고, 각 command의 독립 service를 구현·확장한 뒤 command-service wiring 순서로 구성해야 합니다.
 - 사용자가 특정 plan 문서의 최신화를 지시하면 실제 repository contract, 구현, tests, scripts를 대조하고 검증 시각과 구현 상태를 plan에 기록해야 합니다.

@@ -16,7 +16,7 @@
   - host wrapper 적용 시 replacement는 `isError:false` transport success로 돌아가지만, text는 semantic unknown을 유지하는 trade-off가 있습니다.
   - plugin package reload 후에만 새 동작이 적용된다는 setup mental model과 일치합니다.
 
-extension은 `skill_registry`라는 하나의 tool을 등록합니다. 별도의 slash command나 custom command는 등록하지 않습니다.
+extension은 `skill_registry` tool과 `/skill-registry:reindex`, `/skill-registry:discover`, `/skill-registry:diagnostics` namespaced slash command를 등록합니다. 각각 effective scope index 갱신, query 기반 skill 탐색, index audit/validation/metrics 조회를 제공합니다.
 
 ## 요구 사항
 
@@ -136,20 +136,16 @@ Skill 본문을 작성합니다.
 
 설정 파일은 다음 순서로 확인하며, 유효한 JSON을 처음 찾은 파일을 사용합니다.
 
-1. project-local
-   - `.pi/settings/skill-registry/skill-registry.json`
-   - `.pi/settings/skill-registry.json`
-   - `.pi/settings.json`
-2. Pi global
-   - `$PI_CODING_AGENT_DIR/settings/skill-registry/skill-registry.json`
-   - `$PI_CODING_AGENT_DIR/settings/skillRegistry.json`
-   - 환경 변수가 없으면 `~/.pi/agent`를 사용
-3. OMP global
-   - `$OMP_AGENT_DIR/settings/skill-registry/skill-registry.json`
-   - `$OMP_AGENT_DIR/settings/skillRegistry.json`
-   - `OMP_AGENT_DIR`와 `OMP_AGENT_HOME`이 모두 없으면 `~/.omp/agent`를 사용
+> **Breaking path migration**: 이전 설정 경로(`$PI_CODING_AGENT_DIR/…`, `$OMP_AGENT_DIR/…`, `.pi/settings/…`, `.pi/settings.json` 등)는 더 이상 읽지 않습니다. 아래 네 경로만 사용합니다.
 
-`OMP_AGENT_DIR`는 `OMP_AGENT_HOME`보다 우선합니다. 설정 파일은 `skillRegistry`로 감싼 형태와 payload 자체를 모두 지원합니다.
+| 순서 | 경로 | 범위 |
+| ---: | --- | --- |
+| 1 | `.pi/skill-registry.json` | project-local |
+| 2 | `.omp/agent/skill-registry.json` | workspace |
+| 3 | `~/.pi/skill-registry.json` | Pi user-global |
+| 4 | `~/.omp/agent/skill-registry.json` | OMP user-global |
+
+유효한 JSON을 처음 찾은 파일을 사용합니다. 나머지 경로는 확인하지 않습니다. 권장 project-local 설정 파일은 `.pi/skill-registry.json`입니다.
 
 ```json
 {
