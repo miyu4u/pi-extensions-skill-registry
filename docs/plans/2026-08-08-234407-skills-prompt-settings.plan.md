@@ -4,7 +4,7 @@ status: "completed"
 mode: "deep"
 authoring_phase: "upgrade"
 created_at: "2026-08-08T23:44:07+09:00"
-updated_at: "2026-08-08T15:26:06Z"
+updated_at: "2026-08-15T06:35:21Z"
 goal: "skills block replacement controls and configurable persistent skill prompt guidance"
 budgets:
   max_document_lines: 560
@@ -12,8 +12,6 @@ budgets:
   max_parallel_lanes: 4
   appended_policy: "compact-then-split"
 ---
-
-<MUST> 해당 plan 파일을 진행상황 관리 board로 사용해야합니다 </MUST>
 
 # Skills Prompt Settings
 
@@ -321,18 +319,33 @@ main hooks --------------------------> first <skills> block only
 - carry-forward: none
 - self_improvement_audit: `applied`; repeated_pattern=sealed prompt-settings loop execution; count_or_evidence=three-loop completion; action=created optimized managed skill; changed_skill_or_script=`skill-registry-prompt-settings-loop`; deferred_reason=none
 
+#### Loop 4: artifact verifier follow-up closure
+
+- checkpoint before: `L3-terminal-success`
+- plan slice / TODO: re-run prompt settings verification, prove built artifact hook parity, and close the recorded non-blocking follow-up
+- build summary: verified that `scripts/verify/dist-harness.ts` captures both registered prompt hooks and `scripts/verify/verify-artifact.ts` executes default, custom/names, first-block-only, and disabled pass-through scenarios
+- validation result: targeted unit passed with 3 suites and 43 tests; `bun run test:runtime` passed with 1 suite and 4 tests; `bun run check` passed; `bun run build && bun run verify:artifact` passed with `verify:artifact OK` and `freshProcess=true`
+- review bucket: no-action; the previously recorded artifact verifier coverage gap is closed by current implementation and passing artifact gate
+- guardrail status: closed
+- checkpoint after: `L4-artifact-verifier-pass`
+- observability trace: `verification -> artifact-build -> artifact-gate -> follow-up-closure`
+- retry / idempotency: each verification command was run once for this closure; no migration or external side effect was retried
+- verification ladder: `required=artifact-composition`; `highest_proven=artifact-composition`
+- carry-forward: none
+- self_improvement_audit: `no-change`; repeated_pattern=artifact follow-up closure; count_or_evidence=artifact gate pass; action=none; changed_skill_or_script=none; deferred_reason=none
+
 ### Loop Final Summary
 
 - completion_status: `success`
-- total_loops: 3
-- last_review_bucket: `follow-up`
-- last_verification_ladder: `required=runtime-composition`; `highest_proven=runtime-composition`; `open verification gap=artifact-verifier-prompt-hook-coverage`
-- checkpoint_resume_state: terminal at `L3-terminal-success`; no resume required
-- trace_summary: all required `preflight`, `build`, `validation`, `review`, `guardrail`, `checkpoint`, and `final` events recorded above
+- total_loops: 4
+- last_review_bucket: `no-action`
+- last_verification_ladder: `required=artifact-composition`; `highest_proven=artifact-composition`; `open verification gap=none`
+- checkpoint_resume_state: terminal at `L4-artifact-verifier-pass`; no resume required
+- trace_summary: all required `preflight`, `build`, `validation`, `review`, `guardrail`, `checkpoint`, `final`, and `follow-up-closure` events recorded above
 - guardrail_summary: closed
-- human_review_gate: `approve` for plan DoD; post-review decision is `needs-follow-up` for non-blocking artifact verifier coverage
+- human_review_gate: `approve`; post-review artifact verifier follow-up resolved
 - resume_replay_safety: safe; only deterministic test/format/plan corrections were retried
-- observability_summary: command-level evidence is recorded in each loop validation result
+- observability_summary: command-level evidence is recorded in each loop validation result, including built artifact prompt-hook parity
 - replan_required: no
 
 ### Verification / Rollback
@@ -357,10 +370,10 @@ main hooks --------------------------> first <skills> block only
 ### Post-Review Follow-up
 
 - confirmed_blocker: none
-- decision: `needs-follow-up`
-- follow_up: extend `scripts/verify/dist-harness.ts` and `scripts/verify/verify-artifact.ts` to exercise built `before_agent_start` and `before_provider_request` prompt settings behavior.
+- decision: `resolved` (supersedes the prior `needs-follow-up` state; see Loop 4)
+- follow_up: completed in `scripts/verify/dist-harness.ts` and `scripts/verify/verify-artifact.ts`
 - artifact_policy: `dist` is generated and ignored; `package.json` `verify:pr` runs `bun run build` before artifact verification, and rebuilt bundle prompt parity passed during review.
-- rationale: source and rebuilt runtime behavior are proven; artifact-level prompt coverage remains unautomated and is not a release blocker.
+- rationale: built artifact prompt coverage is now automated and passed in the current verification run; no artifact-level gap remains.
 
 ## APPENDED
 
@@ -372,4 +385,4 @@ main hooks --------------------------> first <skills> block only
   - [x] `null`·숫자·객체·배열 등 strict `false` 이외 invalid toggle의 `true` fallback을 parameterized test로 검증했다.
   - [x] disabled provider payload의 `instructions`, system/developer messages, text-part content에 대한 pass-through 및 직렬화 보존을 세분화해 검증했다.
   - validation: targeted unit 3 suites/43 tests, `bun run test:runtime` 1 suite/4 tests, `bun run check` passed.
-  - residual: built artifact verifier의 prompt-hook parity 자동화는 기존 Post-Review Follow-up으로 남겨 둔다.
+  - follow-up resolution: `bun run build && bun run verify:artifact` passed with `verify:artifact OK` and `freshProcess=true`; built artifact verifier의 prompt-hook parity 자동화 잔여 gap은 해소되었다.
