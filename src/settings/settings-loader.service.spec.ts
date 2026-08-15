@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, test } from '@jest/globals'
+import { afterEach, describe, expect, jest, test } from '@jest/globals'
 import { SERVICE } from '../service-registry'
 import { DEFAULT_SETTINGS } from '../shared'
 
@@ -26,6 +26,8 @@ type SettingPayload = {
 describe('settings loader service', () => {
   const loader = SERVICE.settingsLoader
   let root = ''
+  let fakeHome = ''
+  let homedirSpy: jest.SpiedFunction<typeof os.homedir> | null = null
   let previousCwd = process.cwd()
   let envSnapshot: EnvSnapshot = {}
 
@@ -34,6 +36,14 @@ describe('settings loader service', () => {
     if (root) {
       fs.rmSync(root, { recursive: true, force: true })
       root = ''
+    }
+    if (fakeHome) {
+      fs.rmSync(fakeHome, { recursive: true, force: true })
+      fakeHome = ''
+    }
+    if (homedirSpy) {
+      homedirSpy.mockRestore()
+      homedirSpy = null
     }
     process.chdir(previousCwd)
   })
@@ -53,7 +63,11 @@ describe('settings loader service', () => {
   function setupProject(): void {
     previousCwd = process.cwd()
     root = fs.mkdtempSync(path.join(process.cwd(), '.tmp-skill-registry-settings-'))
+    fakeHome = fs.mkdtempSync(path.join(process.cwd(), '.tmp-skill-registry-home-'))
     envSnapshot = { ...process.env }
+    homedirSpy = jest.spyOn(os, 'homedir').mockReturnValue(fakeHome)
+    process.env.HOME = fakeHome
+    process.env.USERPROFILE = fakeHome
     process.chdir(root)
   }
 
@@ -73,10 +87,26 @@ describe('settings loader service', () => {
     )
   }
 
+  function writeGlobalSetting(relativePathFromHome: string, payload: SettingPayload): void {
+    const filePath = path.join(fakeHome, relativePathFromHome)
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify(
+        {
+          skillRegistry: payload,
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    )
+  }
+
   test('loads explicit databasePath in top-level settings', () => {
     setupProject()
     const absolutePath = path.join(root, 'explicit', 'custom.sqlite')
-    writeProjectSetting('.pi/settings.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       roots: ['./skills'],
       fileNames: ['SKILL.md'],
       presetSkills: ['alpha'],
@@ -97,15 +127,155 @@ describe('settings loader service', () => {
     expect(settings.databasePath).toBe(absolutePath)
   })
 
+  test('strictly enforces four-path precedence: .pi local > .omp local > .pi global > .omp global', () => {
+    setupProject()
+    writeGlobalSetting('.omp/agent/skill-registry.json', {
+      presetSkills: ['global-omp'],
+    })
+    expect(loader.loadSettings().presetSkills).toEqual(['global-omp'])
+
+    writeGlobalSetting('.pi/skill-registry.json', {
+      presetSkills: ['global-pi'],
+    })
+    expect(loader.loadSettings().presetSkills).toEqual(['global-pi'])
+
+    writeProjectSetting('.omp/agent/skill-registry.json', {
+      presetSkills: ['local-omp'],
+    })
+    expect(loader.loadSettings().presetSkills).toEqual(['local-omp'])
+
+    writeProjectSetting('.pi/skill-registry.json', {
+      presetSkills: ['local-pi'],
+    })
+    expect(loader.loadSettings().presetSkills).toEqual(['local-pi'])
+  })
+
+  test('strictly enforces four-path precedence for loadPromptSettings', () => {
+    setupProject()
+    writeGlobalSetting('.omp/agent/skill-registry.json', {
+      skillsPromptEnabled: true,
+      skillsPrompt: 'global-omp-prompt',
+      promptSkillNames: ['global-omp-skill'],
+    })
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: true,
+      skillsPrompt: 'global-omp-prompt',
+      promptSkillNames: ['global-omp-skill'],
+    })
+
+    writeGlobalSetting('.pi/skill-registry.json', {
+      skillsPromptEnabled: false,
+      skillsPrompt: 'global-pi-prompt',
+      promptSkillNames: ['global-pi-skill'],
+    })
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: false,
+      skillsPrompt: 'global-pi-prompt',
+      promptSkillNames: ['global-pi-skill'],
+    })
+
+    writeProjectSetting('.omp/agent/skill-registry.json', {
+      skillsPromptEnabled: true,
+      skillsPrompt: 'local-omp-prompt',
+      promptSkillNames: ['local-omp-skill'],
+    })
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: true,
+      skillsPrompt: 'local-omp-prompt',
+      promptSkillNames: ['local-omp-skill'],
+    })
+
+    writeProjectSetting('.pi/skill-registry.json', {
+      skillsPromptEnabled: false,
+      skillsPrompt: 'local-pi-prompt',
+      promptSkillNames: ['local-pi-skill'],
+    })
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: false,
+      skillsPrompt: 'local-pi-prompt',
+      promptSkillNames: ['local-pi-skill'],
+    })
+  })
+
+  test('ignores legacy paths and env-derived settings paths for settings loading', () => {
+    setupProject()
+    // Legacy project setting files
+    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+      presetSkills: ['legacy-nested'],
+    })
+    writeProjectSetting('.pi/settings/skill-registry.json', {
+      presetSkills: ['legacy-mid'],
+    })
+    writeProjectSetting('.pi/settings.json', {
+      presetSkills: ['legacy-base'],
+    })
+
+    // Env-derived custom paths should not be treated as settings candidates
+    const envCustomAgentDir = path.join(root, 'custom-agent-dir')
+    const envCustomAgentHome = path.join(root, 'custom-agent-home')
+    const envCustomPiDir = path.join(root, 'custom-pi-dir')
+    process.env.OMP_AGENT_DIR = envCustomAgentDir
+    process.env.OMP_AGENT_HOME = envCustomAgentHome
+    process.env.PI_CODING_AGENT_DIR = envCustomPiDir
+    for (const [directory, skill] of [
+      [envCustomAgentDir, 'env-dir-skill'],
+      [envCustomAgentHome, 'env-home-skill'],
+      [envCustomPiDir, 'env-pi-skill'],
+    ] as const) {
+      for (const legacyPath of [
+        'skill-registry.json',
+        path.join('settings', 'skill-registry', 'skill-registry.json'),
+        path.join('settings', 'skillRegistry.json'),
+      ]) {
+        const filePath = path.join(directory, legacyPath)
+        fs.mkdirSync(path.dirname(filePath), { recursive: true })
+        fs.writeFileSync(filePath, JSON.stringify({ skillRegistry: { presetSkills: [skill] } }), 'utf-8')
+      }
+    }
+
+    const settings = loader.loadSettings()
+    expect(settings.presetSkills).toEqual(DEFAULT_SETTINGS.presetSkills)
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: true,
+      promptSkillNames: [],
+    })
+  })
+
+  test('skips invalid candidates and falls through to the next valid path', () => {
+    setupProject()
+    const localPiPath = path.join(root, '.pi', 'skill-registry.json')
+    fs.mkdirSync(path.dirname(localPiPath), { recursive: true })
+    fs.writeFileSync(localPiPath, '{ invalid json', 'utf-8')
+    writeProjectSetting('.omp/agent/skill-registry.json', {
+      presetSkills: ['local-omp'],
+      skillsPromptEnabled: false,
+    })
+
+    expect(loader.loadSettings().presetSkills).toEqual(['local-omp'])
+    expect(loader.loadPromptSettings()).toEqual({
+      skillsPromptEnabled: false,
+      promptSkillNames: [],
+    })
+
+    fs.rmSync(path.join(root, '.omp'), { recursive: true, force: true })
+    writeGlobalSetting('.pi/skill-registry.json', {
+      presetSkills: ['global-pi'],
+    })
+    expect(loader.loadSettings().presetSkills).toEqual(['global-pi'])
+
+    fs.writeFileSync(path.join(fakeHome, '.pi', 'skill-registry.json'), '{ invalid json', 'utf-8')
+    expect(loader.loadSettings().presetSkills).toEqual(DEFAULT_SETTINGS.presetSkills)
+  })
+
   test('prefers dedicated project settings over generic project block', () => {
     setupProject()
-    writeProjectSetting('.pi/settings.json', {
+    writeProjectSetting('.omp/agent/skill-registry.json', {
       roots: ['./fallback'],
       fileNames: ['fallback.md'],
       presetSkills: ['fallback'],
       databasePath: path.join(root, 'fallback.sqlite'),
     })
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       roots: ['./preferred'],
       fileNames: ['SKILL.md'],
       presetSkills: ['beta'],
@@ -140,7 +310,7 @@ describe('settings loader service', () => {
 
   test('resolves relative configured databasePath against project root', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       roots: ['./skills'],
       fileNames: ['SKILL.md'],
       databasePath: 'relative-cache/index.sqlite',
@@ -153,7 +323,7 @@ describe('settings loader service', () => {
 
   test('expands databasePath home shorthand', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       roots: ['./skills'],
       fileNames: ['SKILL.md'],
       databasePath: '~/agent-cache/skill-registry.sqlite',
@@ -233,7 +403,7 @@ describe('settings loader service', () => {
    */
   test('includes both runtime and legacy managed-skills in default scopeRoots and roots', () => {
     setupProject()
-    writeProjectSetting('.pi/settings.json', {})
+    writeProjectSetting('.pi/skill-registry.json', {})
     const settings = loader.loadSettings()
 
     const expectedRuntimeRoot = path.join(os.homedir(), '.omp', 'agent', 'managed-skills')
@@ -245,7 +415,7 @@ describe('settings loader service', () => {
 
   test('loads custom future scopes and merges them with default scope roots', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       scopeRoots: {
         'future-scope': ['./future-skills', '~/global-future'],
       },
@@ -258,7 +428,7 @@ describe('settings loader service', () => {
 
   test('flattens custom scopes to append to legacy roots if roots is omitted', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       scopeRoots: {
         'future-scope': ['./future-skills'],
       },
@@ -274,7 +444,7 @@ describe('settings loader service', () => {
 
   test('falls back to default scopePriority when containing non-string items', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       scopePriority: ['custom-scope', '', 'custom-scope', 123],
     })
 
@@ -284,7 +454,7 @@ describe('settings loader service', () => {
 
   test('filters out empty strings and dedupes valid scope names in scopePriority', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       scopePriority: ['custom-scope', '  ', 'custom-scope', 'other-scope'],
     })
 
@@ -294,7 +464,7 @@ describe('settings loader service', () => {
 
   test('accepts valid custom scopePriority list', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       scopePriority: ['managed-skills', 'user-authored:local'],
     })
 
@@ -317,7 +487,7 @@ describe('settings loader service', () => {
     ['array', ['false']],
   ])('falls back to enabled=true when skillsPromptEnabled is invalid %s', (_, invalidValue) => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       skillsPromptEnabled: invalidValue,
     })
 
@@ -329,7 +499,7 @@ describe('settings loader service', () => {
 
   test('normalizes prompt settings defaults, invalid values, and names deterministically', () => {
     setupProject()
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       skillsPromptEnabled: 'false',
       skillsPrompt: '  ',
       promptSkillNames: [' planning ', '', 'typescript-code-style', 'planning', 42],
@@ -343,12 +513,12 @@ describe('settings loader service', () => {
 
   test('accepts false toggle and non-empty custom prompt while preserving candidate precedence', () => {
     setupProject()
-    writeProjectSetting('.pi/settings.json', {
+    writeProjectSetting('.omp/agent/skill-registry.json', {
       skillsPromptEnabled: true,
       skillsPrompt: 'generic prompt',
       promptSkillNames: ['generic'],
     })
-    writeProjectSetting('.pi/settings/skill-registry/skill-registry.json', {
+    writeProjectSetting('.pi/skill-registry.json', {
       skillsPromptEnabled: false,
       skillsPrompt: '  custom prompt  ',
       promptSkillNames: [' custom ', 'custom'],

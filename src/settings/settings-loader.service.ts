@@ -7,8 +7,7 @@ import {
   DEFAULT_SCOPE_ROOTS,
   DEFAULT_SETTINGS,
   SETTING_GROUP_KEY,
-  SKILL_REGISTRY_SETTINGS_FILE,
-  SKILL_REGISTRY_SETTINGS_FILE_PATHS,
+  SKILL_REGISTRY_SETTINGS_CANDIDATE_PATHS,
 } from '../shared'
 import type { PromptGuidanceSettings } from './prompt-guidance-settings.interface'
 import type { SettingsLoaderInterface } from './settings-loader.interface'
@@ -170,28 +169,13 @@ export class SettingsLoaderService implements SettingsLoaderInterface {
   }
 
   /**
-   * 프로젝트/전역 설정 파일 경로를 우선순위로 계산합니다.
+   * 고정된 네 경로를 project local과 machine global 기준으로 해석합니다.
    */
   private collectSettingFileCandidates(projectRoot: string): string[] {
-    const projectScoped = SKILL_REGISTRY_SETTINGS_FILE_PATHS.flatMap((baseDir) => [
-      path.join(projectRoot, baseDir, SKILL_REGISTRY_SETTINGS_FILE),
-      path.join(projectRoot, `${baseDir}.json`),
-    ])
-
-    const piAgentDir = this.resolveAgentDirectory(process.env.PI_CODING_AGENT_DIR?.trim(), path.join(os.homedir(), '.pi', 'agent'))
-    const ompAgentDir = this.resolveAgentDirectory(
-      process.env.OMP_AGENT_DIR?.trim() || process.env.OMP_AGENT_HOME?.trim(),
-      path.join(os.homedir(), '.omp', 'agent'),
-    )
-
-    const globalScoped = [
-      path.join(piAgentDir, 'settings', 'skill-registry', SKILL_REGISTRY_SETTINGS_FILE),
-      path.join(piAgentDir, 'settings', `${SETTING_GROUP_KEY}.json`),
-      path.join(ompAgentDir, 'settings', 'skill-registry', SKILL_REGISTRY_SETTINGS_FILE),
-      path.join(ompAgentDir, 'settings', `${SETTING_GROUP_KEY}.json`),
-    ]
-
-    return this.dedupePaths([...projectScoped, ...globalScoped])
+    return SKILL_REGISTRY_SETTINGS_CANDIDATE_PATHS.map((candidate) => {
+      const resolved = this.resolvePath(candidate)
+      return path.isAbsolute(resolved) ? resolved : path.resolve(projectRoot, resolved)
+    })
   }
 
   /**
@@ -312,29 +296,6 @@ export class SettingsLoaderService implements SettingsLoaderInterface {
       }
     }
     return result
-  }
-
-  /**
-   * 후보 리스트의 빈 항목과 중복 항목을 제거합니다.
-   */
-  private dedupePaths(values: string[]): string[] {
-    const deduped = new Set<string>()
-    const output: string[] = []
-    for (const value of values) {
-      if (!value || deduped.has(value)) {
-        continue
-      }
-      deduped.add(value)
-      output.push(value)
-    }
-    return output
-  }
-
-  /**
-   * agent settings root 후보를 절대 경로로 정규화합니다.
-   */
-  private resolveAgentDirectory(candidate: string | undefined, fallback: string): string {
-    return this.resolvePath(candidate && candidate.length > 0 ? candidate : fallback)
   }
 
   /**

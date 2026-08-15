@@ -76,11 +76,16 @@ export const NON_WORD_BOUNDARY_RE = /[\p{L}\p{N}_]+/gu
 /** skill-registry 설정 키입니다. */
 export const SETTING_GROUP_KEY = 'skillRegistry'
 
-/** skill-registry 설정 파일명입니다. */
-export const SKILL_REGISTRY_SETTINGS_FILE = 'skill-registry.json'
-
-/** OMP runtime settings root 후보를 위한 파일명입니다. */
-export const SKILL_REGISTRY_SETTINGS_FILE_PATHS = ['.pi/settings/skill-registry', '.pi/settings'] as const
+/**
+ * project local과 machine global에서 사용할 skill-registry 설정 후보를
+ * 고정된 precedence 순서로 정의합니다.
+ */
+export const SKILL_REGISTRY_SETTINGS_CANDIDATE_PATHS = [
+  '.pi/skill-registry.json',
+  '.omp/agent/skill-registry.json',
+  '~/.pi/skill-registry.json',
+  '~/.omp/agent/skill-registry.json',
+] as const
 
 /** 범위별 기본 skill-root 후보를 정의합니다.
  * local: 현재 작업공간 기준 루트입니다.
