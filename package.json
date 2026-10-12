@@ -47,22 +47,23 @@
     "verify:pr": "bun run check && bun run test:unit && bun run test:sqlite && bun run build && bun run verify:artifact && bun run test:verify"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.84.1"
+    "@earendil-works/pi-coding-agent": "^1.1.0"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.52"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.7",
-    "@jest/globals": "^30.4.1",
-    "@earendil-works/pi-coding-agent": "^0.84.1",
-    "@types/bun": "latest",
+    "@biomejs/biome": "^2.5.15",
+    "@jest/globals": "^30.5.2",
+    "@earendil-works/pi-coding-agent": "^1.1.0",
+    "@types/bun": "^1.4.2",
     "@types/jest": "^30.0.0",
-    "@types/node": "^26.2.0",
-    "bun-types": "latest",
-    "jest": "^30.4.2",
-    "ts-jest": "^29.4.12",
-    "typescript": "^6.0.3"
+    "@types/node": "^26.6.5",
+    "bun-types": "^1.4.3",
+    "jest": "^30.5.2",
+    "@swc/core": "^1.16.18",
+    "@swc/jest": "^0.2.39",
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=22.5.0"

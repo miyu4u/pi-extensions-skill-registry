@@ -3,9 +3,8 @@ import type { SkillIndexDiagnostics } from '../indexing/skill-index-diagnostics'
 import type { SkillIndexLoader } from '../indexing/skill-index-loader'
 import type { SkillInputNormalizer } from '../indexing/skill-input-normalizer'
 import type { IndexArtifacts, ToolContext } from '../shared'
-import { DiagnosticsCommandService } from './diagnostics-command.service'
 
-jest.mock('../results', () => ({
+jest.unstable_mockModule('../results', () => ({
   buildAuditResult: jest.fn().mockReturnValue({
     content: [{ type: 'text', text: 'audit passed' }],
     details: { issues: [] },
@@ -19,6 +18,11 @@ jest.mock('../results', () => ({
     details: { count: 42 },
   }),
 }))
+
+/**
+ * ESM module이 result builder mock 등록 이후 평가되도록 순서를 고정합니다.
+ */
+const { DiagnosticsCommandService } = await import('./diagnostics-command.service')
 
 describe('DiagnosticsCommandService', () => {
   test('should return success status and grouped details from audit, validation, and metrics', async () => {
@@ -60,7 +64,7 @@ describe('DiagnosticsCommandService', () => {
     expect(result).toEqual({
       kind: 'diagnostics',
       status: 'success',
-      message: 'audit passed\n\nskill_registry validate 결과\n\nskill_registry metrics summary',
+      message: 'audit passed\n\nvalidation success\n\nmetrics summary',
       details: {
         audit: { issues: [] },
         validation: { valid: true },

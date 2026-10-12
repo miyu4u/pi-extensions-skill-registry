@@ -1,18 +1,36 @@
 {
-  "preset": "ts-jest/presets/default-esm",
   "testEnvironment": "node",
-  "roots": ["<rootDir>/src"],
-  "testMatch": ["<rootDir>/src/**/*.spec.ts"],
-  "testPathIgnorePatterns": ["<rootDir>/.*\\.bun\\.spec\\.ts$"],
+  "roots": [
+    "<rootDir>/src"
+  ],
+  "testMatch": [
+    "<rootDir>/src/**/*.spec.ts"
+  ],
+  "testPathIgnorePatterns": [
+    "<rootDir>/.*\\.bun\\.spec\\.ts$"
+  ],
   "transform": {
     "^.+\\.ts$": [
-      "ts-jest",
+      "@swc/jest",
       {
-        "tsconfig": "tsconfig.json",
-        "useESM": true
+        "jsc": {
+          "parser": {
+            "syntax": "typescript"
+          },
+          "target": "es2022"
+        },
+        "module": {
+          "type": "es6"
+        }
       }
     ]
   },
-  "extensionsToTreatAsEsm": [".ts"],
-  "moduleFileExtensions": ["ts", "js", "json"]
+  "extensionsToTreatAsEsm": [
+    ".ts"
+  ],
+  "moduleFileExtensions": [
+    "ts",
+    "js",
+    "json"
+  ]
 }

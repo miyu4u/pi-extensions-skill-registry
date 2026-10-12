@@ -103,6 +103,7 @@ function makeSkill(params: {
     canonicalName,
     path: id,
     sourceRoot,
+    scope: 'skills',
     rawFrontmatter: {
       name: canonicalName,
       description,
